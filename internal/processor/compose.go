@@ -29,7 +29,7 @@ func ProcessCompose(rc *regclient.RegClient, path string, config ProcessorConfig
 				continue
 			}
 			if pinned != def.Image {
-				color.Green("📌 [COMPOSE] %s: %s → %s", svc, def.Image, pinned)
+				FormatPinMessageWithService("COMPOSE", svc, def.Image, pinned)
 				cf.Services[svc] = struct {
 					Image string `yaml:"image"`
 				}{Image: pinned}

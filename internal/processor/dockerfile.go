@@ -33,7 +33,7 @@ func ProcessDockerfile(rc *regclient.RegClient, path string, config ProcessorCon
 					output.WriteString(line + "\n")
 					continue
 				}
-				color.Green("📌 [DOCKERFILE] %s → %s", parts[1], pinned)
+				FormatPinMessage("DOCKERFILE", parts[1], pinned)
 				// Preserve indentation if any
 				indent := strings.Repeat(" ", len(line)-len(strings.TrimLeft(line, " ")))
 				output.WriteString(indent + "FROM " + pinned + "\n")
