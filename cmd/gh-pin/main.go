@@ -17,6 +17,7 @@ var (
 	noColor     = flag.Bool("no-color", false, "disable colored output")
 	dryRun      = flag.Bool("dry-run", false, "preview changes without writing files")
 	recursive   = flag.Bool("recursive", true, "scan directories recursively")
+	pervasive   = flag.Bool("pervasive", false, "scan all YAML files, not just docker-compose files")
 	showVersion = flag.Bool("version", false, "show version information")
 	algo        = flag.String("algo", "sha256", "digest algorithm to check for (sha256, sha512, etc.)")
 )
@@ -36,7 +37,7 @@ func main() {
 	}
 
 	if len(flag.Args()) == 0 {
-		fmt.Fprintf(os.Stderr, "Usage: %s [--version] [--dry-run] [--no-color] [--recursive=false] [--algo=sha256] <file|dir> [file|dir...]\n", os.Args[0])
+		fmt.Fprintf(os.Stderr, "Usage: %s [--version] [--dry-run] [--no-color] [--recursive=false] [--pervasive] [--algo=sha256] <file|dir> [file|dir...]\n", os.Args[0])
 		os.Exit(1)
 	}
 
@@ -45,6 +46,7 @@ func main() {
 		DryRun:    *dryRun,
 		Algorithm: *algo,
 		NoColor:   *noColor,
+		Pervasive: *pervasive,
 	}
 
 	rc := regclient.New()

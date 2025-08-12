@@ -14,6 +14,7 @@ type ProcessorConfig struct {
 	DryRun    bool
 	Algorithm string
 	NoColor   bool
+	Pervasive bool
 }
 
 // getFileMode returns the file mode of the given path, defaulting to 0644 if unable to stat

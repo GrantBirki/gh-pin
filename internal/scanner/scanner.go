@@ -57,8 +57,11 @@ func ScanPath(rc *regclient.RegClient, root string, config processor.ProcessorCo
 			fmt.Printf("Processing Dockerfile: %s\n", path)
 			return processor.ProcessDockerfile(rc, path, config)
 		case lower == "docker-compose.yml",
-			lower == "docker-compose.yaml",
-			(ext == ".yml" || ext == ".yaml"):
+			lower == "docker-compose.yaml":
+			fmt.Printf("Processing Compose: %s\n", path)
+			return processor.ProcessCompose(rc, path, config)
+		case config.Pervasive && (ext == ".yml" || ext == ".yaml"):
+			// Only process generic YAML files when --pervasive flag is used
 			// Try parsing as compose; skip if not valid
 			data, err := os.ReadFile(path)
 			if err != nil {
