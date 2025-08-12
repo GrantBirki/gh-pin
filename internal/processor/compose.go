@@ -23,7 +23,7 @@ func ProcessCompose(rc *regclient.RegClient, path string, config ProcessorConfig
 	changed := false
 	for svc, def := range cf.Services {
 		if def.Image != "" && !hasDigest(def.Image, config.Algorithm) {
-			pinned, err := PinImage(rc, def.Image)
+			pinned, err := PinImage(rc, def.Image, config)
 			if err != nil {
 				color.Yellow("WARN: %v", err)
 				continue

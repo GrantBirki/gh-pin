@@ -15,7 +15,7 @@ func hasDigest(image, algorithm string) bool {
 }
 
 // PinImage resolves an image tag to its immutable digest using regclient
-func PinImage(rc *regclient.RegClient, image string) (string, error) {
+func PinImage(rc *regclient.RegClient, image string, config ProcessorConfig) (string, error) {
 	r, err := ref.New(image)
 	if err != nil {
 		return "", fmt.Errorf("parse ref %q: %w", image, err)
@@ -28,5 +28,20 @@ func PinImage(rc *regclient.RegClient, image string) (string, error) {
 	}
 
 	digest := m.GetDescriptor().Digest
-	return fmt.Sprintf("%s@%s", r.CommonName(), digest.String()), nil
+
+	// Use original reference format if ExpandRegistry is false, otherwise use CommonName
+	var imageRef string
+	if config.ExpandRegistry {
+		imageRef = r.CommonName()
+	} else {
+		// Use the original reference, but we need to strip the tag if present
+		// since we're adding the digest
+		originalRef := r.Reference
+		if idx := strings.LastIndex(originalRef, ":"); idx != -1 && !strings.Contains(originalRef[idx:], "@") {
+			originalRef = originalRef[:idx]
+		}
+		imageRef = originalRef
+	}
+
+	return fmt.Sprintf("%s@%s", imageRef, digest.String()), nil
 }

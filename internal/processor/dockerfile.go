@@ -27,7 +27,7 @@ func ProcessDockerfile(rc *regclient.RegClient, path string, config ProcessorCon
 		if strings.HasPrefix(strings.ToUpper(trim), "FROM ") {
 			parts := strings.Fields(trim)
 			if len(parts) >= 2 && !hasDigest(parts[1], config.Algorithm) {
-				pinned, err := PinImage(rc, parts[1])
+				pinned, err := PinImage(rc, parts[1], config)
 				if err != nil {
 					color.Yellow("WARN: %v", err)
 					output.WriteString(line + "\n")
