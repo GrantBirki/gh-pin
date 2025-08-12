@@ -49,7 +49,7 @@ func ProcessDockerfile(rc *regclient.RegClient, path string, config ProcessorCon
 	}
 
 	if changed && !config.DryRun {
-		return os.WriteFile(path, output.Bytes(), 0644)
+		return os.WriteFile(path, output.Bytes(), getFileMode(path))
 	}
 
 	return nil

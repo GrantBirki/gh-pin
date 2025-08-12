@@ -43,7 +43,7 @@ func ProcessCompose(rc *regclient.RegClient, path string, config ProcessorConfig
 		if err != nil {
 			return err
 		}
-		return os.WriteFile(path, out, 0644)
+		return os.WriteFile(path, out, getFileMode(path))
 	}
 
 	return nil

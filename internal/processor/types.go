@@ -1,5 +1,7 @@
 package processor
 
+import "os"
+
 // ComposeFile is a minimal representation of a docker-compose YAML
 type ComposeFile struct {
 	Services map[string]struct {
@@ -12,4 +14,12 @@ type ProcessorConfig struct {
 	DryRun    bool
 	Algorithm string
 	NoColor   bool
+}
+
+// getFileMode returns the file mode of the given path, defaulting to 0644 if unable to stat
+func getFileMode(path string) os.FileMode {
+	if info, err := os.Stat(path); err == nil {
+		return info.Mode().Perm()
+	}
+	return 0644 // fallback to default permissions
 }
