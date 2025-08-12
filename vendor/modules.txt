@@ -1,0 +1,88 @@
+# github.com/docker/libtrust v0.0.0-20160708172513-aabc10ec26b7
+## explicit
+github.com/docker/libtrust
+# github.com/fatih/color v1.18.0
+## explicit; go 1.17
+github.com/fatih/color
+# github.com/goccy/go-yaml v1.18.0
+## explicit; go 1.21.0
+github.com/goccy/go-yaml
+github.com/goccy/go-yaml/ast
+github.com/goccy/go-yaml/internal/errors
+github.com/goccy/go-yaml/internal/format
+github.com/goccy/go-yaml/lexer
+github.com/goccy/go-yaml/parser
+github.com/goccy/go-yaml/printer
+github.com/goccy/go-yaml/scanner
+github.com/goccy/go-yaml/token
+# github.com/klauspost/compress v1.18.0
+## explicit; go 1.22
+github.com/klauspost/compress
+github.com/klauspost/compress/fse
+github.com/klauspost/compress/huff0
+github.com/klauspost/compress/internal/cpuinfo
+github.com/klauspost/compress/internal/le
+github.com/klauspost/compress/internal/snapref
+github.com/klauspost/compress/zstd
+github.com/klauspost/compress/zstd/internal/xxhash
+# github.com/mattn/go-colorable v0.1.14
+## explicit; go 1.18
+github.com/mattn/go-colorable
+# github.com/mattn/go-isatty v0.0.20
+## explicit; go 1.15
+github.com/mattn/go-isatty
+# github.com/opencontainers/go-digest v1.0.0
+## explicit; go 1.13
+github.com/opencontainers/go-digest
+# github.com/regclient/regclient v0.9.0
+## explicit; go 1.23.0
+github.com/regclient/regclient
+github.com/regclient/regclient/config
+github.com/regclient/regclient/internal/auth
+github.com/regclient/regclient/internal/cache
+github.com/regclient/regclient/internal/conffile
+github.com/regclient/regclient/internal/httplink
+github.com/regclient/regclient/internal/limitread
+github.com/regclient/regclient/internal/pqueue
+github.com/regclient/regclient/internal/reghttp
+github.com/regclient/regclient/internal/reqmeta
+github.com/regclient/regclient/internal/sloghandle
+github.com/regclient/regclient/internal/strparse
+github.com/regclient/regclient/internal/timejson
+github.com/regclient/regclient/internal/units
+github.com/regclient/regclient/internal/version
+github.com/regclient/regclient/pkg/archive
+github.com/regclient/regclient/scheme
+github.com/regclient/regclient/scheme/ocidir
+github.com/regclient/regclient/scheme/reg
+github.com/regclient/regclient/types
+github.com/regclient/regclient/types/blob
+github.com/regclient/regclient/types/descriptor
+github.com/regclient/regclient/types/docker
+github.com/regclient/regclient/types/docker/schema1
+github.com/regclient/regclient/types/docker/schema2
+github.com/regclient/regclient/types/errs
+github.com/regclient/regclient/types/manifest
+github.com/regclient/regclient/types/mediatype
+github.com/regclient/regclient/types/oci
+github.com/regclient/regclient/types/oci/v1
+github.com/regclient/regclient/types/ping
+github.com/regclient/regclient/types/platform
+github.com/regclient/regclient/types/ref
+github.com/regclient/regclient/types/referrer
+github.com/regclient/regclient/types/repo
+github.com/regclient/regclient/types/tag
+github.com/regclient/regclient/types/warning
+# github.com/sirupsen/logrus v1.9.3
+## explicit; go 1.13
+github.com/sirupsen/logrus
+# github.com/ulikunitz/xz v0.5.12
+## explicit; go 1.12
+github.com/ulikunitz/xz
+github.com/ulikunitz/xz/internal/hash
+github.com/ulikunitz/xz/internal/xlog
+github.com/ulikunitz/xz/lzma
+# golang.org/x/sys v0.35.0
+## explicit; go 1.23.0
+golang.org/x/sys/unix
+golang.org/x/sys/windows
