@@ -7,7 +7,6 @@ import (
 	"flag"
 	"fmt"
 	"io/fs"
-	"io/ioutil"
 	"log"
 	"os"
 	"path/filepath"
@@ -25,6 +24,7 @@ var (
 	dryRun      = flag.Bool("dry-run", false, "preview changes without writing files")
 	recursive   = flag.Bool("recursive", true, "scan directories recursively")
 	showVersion = flag.Bool("version", false, "show version information")
+	algo        = flag.String("algo", "sha256", "digest algorithm to check for (sha256, sha512, etc.)")
 )
 
 // ComposeFile is a minimal representation of a docker-compose YAML
@@ -32,6 +32,11 @@ type ComposeFile struct {
 	Services map[string]struct {
 		Image string `yaml:"image"`
 	} `yaml:"services"`
+}
+
+// hasDigest checks if an image reference already contains a digest with the specified algorithm
+func hasDigest(image, algorithm string) bool {
+	return strings.Contains(image, "@"+algorithm+":")
 }
 
 // pinImage resolves an image tag to its immutable digest using regclient
@@ -47,13 +52,13 @@ func pinImage(rc *regclient.RegClient, image string) (string, error) {
 		return "", fmt.Errorf("fetch manifest for %q: %w", image, err)
 	}
 
-	digest := m.GetDigest()
+	digest := m.GetDescriptor().Digest
 	return fmt.Sprintf("%s@%s", r.CommonName(), digest.String()), nil
 }
 
 // processCompose updates image tags in a Compose file
 func processCompose(rc *regclient.RegClient, path string) error {
-	data, err := ioutil.ReadFile(path)
+	data, err := os.ReadFile(path)
 	if err != nil {
 		return err
 	}
@@ -65,7 +70,7 @@ func processCompose(rc *regclient.RegClient, path string) error {
 
 	changed := false
 	for svc, def := range cf.Services {
-		if def.Image != "" && !strings.Contains(def.Image, "@sha256:") {
+		if def.Image != "" && !hasDigest(def.Image, *algo) {
 			pinned, err := pinImage(rc, def.Image)
 			if err != nil {
 				color.Yellow("WARN: %v", err)
@@ -86,7 +91,7 @@ func processCompose(rc *regclient.RegClient, path string) error {
 		if err != nil {
 			return err
 		}
-		return ioutil.WriteFile(path, out, 0644)
+		return os.WriteFile(path, out, 0644)
 	}
 
 	return nil
@@ -94,7 +99,7 @@ func processCompose(rc *regclient.RegClient, path string) error {
 
 // processDockerfile updates FROM lines in a Dockerfile
 func processDockerfile(rc *regclient.RegClient, path string) error {
-	data, err := ioutil.ReadFile(path)
+	data, err := os.ReadFile(path)
 	if err != nil {
 		return err
 	}
@@ -108,7 +113,7 @@ func processDockerfile(rc *regclient.RegClient, path string) error {
 		trim := strings.TrimSpace(line)
 		if strings.HasPrefix(strings.ToUpper(trim), "FROM ") {
 			parts := strings.Fields(trim)
-			if len(parts) >= 2 && !strings.Contains(parts[1], "@sha256:") {
+			if len(parts) >= 2 && !hasDigest(parts[1], *algo) {
 				pinned, err := pinImage(rc, parts[1])
 				if err != nil {
 					color.Yellow("WARN: %v", err)
@@ -131,7 +136,7 @@ func processDockerfile(rc *regclient.RegClient, path string) error {
 	}
 
 	if changed && !*dryRun {
-		return ioutil.WriteFile(path, output.Bytes(), 0644)
+		return os.WriteFile(path, output.Bytes(), 0644)
 	}
 
 	return nil
@@ -161,7 +166,7 @@ func scanPath(rc *regclient.RegClient, root string) error {
 			lower == "docker-compose.yaml",
 			(ext == ".yml" || ext == ".yaml"):
 			// Try parsing as compose; skip if not valid
-			data, err := ioutil.ReadFile(path)
+			data, err := os.ReadFile(path)
 			if err != nil {
 				return err
 			}
@@ -193,7 +198,7 @@ func main() {
 	}
 
 	if len(flag.Args()) == 0 {
-		fmt.Fprintf(os.Stderr, "Usage: %s [--version] [--dry-run] [--no-color] [--recursive=false] <file|dir> [file|dir...]\n", os.Args[0])
+		fmt.Fprintf(os.Stderr, "Usage: %s [--version] [--dry-run] [--no-color] [--recursive=false] [--algo=sha256] <file|dir> [file|dir...]\n", os.Args[0])
 		os.Exit(1)
 	}
 

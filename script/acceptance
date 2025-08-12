@@ -1,0 +1,117 @@
+#!/usr/bin/env bash
+
+set -euo pipefail
+
+source script/env "$@"
+
+echo -e "${BLUE}🧪 Running acceptance tests...${OFF}"
+
+# Create temporary directory for test files
+TEMP_DIR=$(mktemp -d)
+echo -e "${BLUE}Using temporary directory: ${TEMP_DIR}${OFF}"
+
+# Setup cleanup trap to ensure temp files are always removed
+cleanup() {
+    echo -e "${BLUE}Cleaning up temporary files...${OFF}"
+    rm -rf "${TEMP_DIR}"
+}
+trap cleanup EXIT
+
+echo -e "${BLUE}Using go run to execute gh-pin directly...${OFF}"
+
+# Test 1: Dockerfile pinning
+echo -e "${BLUE}Test 1: Dockerfile SHA pinning...${OFF}"
+
+# Create a temporary copy of the test Dockerfile with proper naming
+cp test/fixtures/Dockerfile.test "${TEMP_DIR}/Dockerfile"
+
+# Verify the file contains unpinned images initially
+if ! grep -q "FROM ubuntu:latest" "${TEMP_DIR}/Dockerfile"; then
+    echo -e "${RED}❌ Test setup failed: Dockerfile should contain 'ubuntu:latest'${OFF}"
+    exit 1
+fi
+
+if ! grep -q "FROM alpine:3.18" "${TEMP_DIR}/Dockerfile"; then
+    echo -e "${RED}❌ Test setup failed: Dockerfile should contain 'alpine:3.18'${OFF}"
+    exit 1
+fi
+
+echo -e "${GREEN}✅ Test file contains unpinned images as expected${OFF}"
+
+# Run gh-pin on the temporary Dockerfile
+echo -e "${BLUE}Running gh-pin on test Dockerfile...${OFF}"
+go run -mod=vendor ./cmd/gh-pin "${TEMP_DIR}/Dockerfile"
+
+# Verify the file now contains SHA digests
+if ! grep -q "FROM docker.io/library/ubuntu:latest@sha256:" "${TEMP_DIR}/Dockerfile"; then
+    echo -e "${RED}❌ FAIL: ubuntu:latest was not pinned to SHA digest${OFF}"
+    echo "File contents:"
+    cat "${TEMP_DIR}/Dockerfile"
+    exit 1
+fi
+
+if ! grep -q "FROM docker.io/library/alpine:3.18@sha256:" "${TEMP_DIR}/Dockerfile"; then
+    echo -e "${RED}❌ FAIL: alpine:3.18 was not pinned to SHA digest${OFF}"
+    echo "File contents:"
+    cat "${TEMP_DIR}/Dockerfile"
+    exit 1
+fi
+
+echo -e "${GREEN}✅ PASS: Both images were successfully pinned to SHA digests${OFF}"
+
+# Test 2: Dry-run mode
+echo -e "${BLUE}Test 2: Dry-run mode...${OFF}"
+
+# Create a separate subdirectory for dry-run test
+mkdir -p "${TEMP_DIR}/dry-run-test"
+cp test/fixtures/Dockerfile.test "${TEMP_DIR}/dry-run-test/Dockerfile"
+
+# Run in dry-run mode
+go run -mod=vendor ./cmd/gh-pin --dry-run "${TEMP_DIR}/dry-run-test/Dockerfile"
+
+# Verify the file was NOT modified in dry-run mode
+if grep -q "FROM docker.io/library/ubuntu:latest@sha256:" "${TEMP_DIR}/dry-run-test/Dockerfile"; then
+    echo -e "${RED}❌ FAIL: File was modified in dry-run mode${OFF}"
+    exit 1
+fi
+
+echo -e "${GREEN}✅ PASS: Dry-run mode did not modify the file${OFF}"
+
+# Test 3: Version flag
+echo -e "${BLUE}Test 3: Version flag...${OFF}"
+
+version_output=$(go run -mod=vendor ./cmd/gh-pin --version)
+if [[ ! "$version_output" =~ "built at" ]]; then
+    echo -e "${RED}❌ FAIL: Version output does not contain expected format${OFF}"
+    echo "Got: $version_output"
+    exit 1
+fi
+
+echo -e "${GREEN}✅ PASS: Version flag works correctly${OFF}"
+
+# Test 4: Algorithm flag
+echo -e "${BLUE}Test 4: Algorithm flag functionality...${OFF}"
+
+# Create a test file with a sha256-pinned image
+mkdir -p "${TEMP_DIR}/algo-test"
+echo "FROM docker.io/library/ubuntu:latest@sha256:7c06e91f61fa88c08cc74f7e1b7c69ae24910d745357e0dfe1d2c0322aaf20f9" > "${TEMP_DIR}/algo-test/Dockerfile"
+
+# Test default behavior (should skip sha256-pinned image)
+output=$(go run -mod=vendor ./cmd/gh-pin --dry-run "${TEMP_DIR}/algo-test/Dockerfile" 2>&1 || true)
+if [[ -n "$output" ]]; then
+    echo -e "${RED}❌ FAIL: Default algo=sha256 should skip already pinned images${OFF}"
+    echo "Got output: $output"
+    exit 1
+fi
+
+# Test with different algorithm (should process sha256-pinned image)
+output=$(go run -mod=vendor ./cmd/gh-pin --dry-run --algo=sha512 "${TEMP_DIR}/algo-test/Dockerfile" 2>&1 || true)
+if [[ ! "$output" =~ "DOCKERFILE" ]]; then
+    echo -e "${RED}❌ FAIL: algo=sha512 should process sha256-pinned images${OFF}"
+    echo "Got output: $output"
+    exit 1
+fi
+
+echo -e "${GREEN}✅ PASS: Algorithm flag works correctly${OFF}"
+
+echo -e "${GREEN}🎉 All acceptance tests passed!${OFF}"

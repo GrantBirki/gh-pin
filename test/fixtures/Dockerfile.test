@@ -1,0 +1,7 @@
+# Test Dockerfile for acceptance testing
+FROM ubuntu:latest
+FROM alpine:3.18
+
+# This file is used for testing gh-pin functionality
+# It contains image references that should be pinned to digests
+RUN echo "This is a test"
