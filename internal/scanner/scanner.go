@@ -12,6 +12,29 @@ import (
 	"github.com/regclient/regclient"
 )
 
+// isStandardDockerfile checks if a filename matches standard Dockerfile patterns
+// during recursive scanning (more restrictive)
+func isStandardDockerfile(filename string) bool {
+	lower := strings.ToLower(filename)
+
+	// Exact matches for standard names
+	if lower == "dockerfile" {
+		return true
+	}
+
+	// Standard .dockerfile extension
+	if strings.HasSuffix(lower, ".dockerfile") {
+		return true
+	}
+
+	// Standard Dockerfile with dot suffixes (Dockerfile.dev, Dockerfile.prod, etc.)
+	if strings.HasPrefix(lower, "dockerfile.") {
+		return true
+	}
+
+	return false
+}
+
 // ScanPath walks a directory and processes all supported files
 func ScanPath(rc *regclient.RegClient, root string, config processor.ProcessorConfig, recursive bool) error {
 	return filepath.WalkDir(root, func(path string, d fs.DirEntry, err error) error {
@@ -25,11 +48,12 @@ func ScanPath(rc *regclient.RegClient, root string, config processor.ProcessorCo
 			return nil
 		}
 
-		lower := strings.ToLower(filepath.Base(path))
+		basename := filepath.Base(path)
+		lower := strings.ToLower(basename)
 		ext := strings.ToLower(filepath.Ext(path))
 
 		switch {
-		case lower == "dockerfile" || strings.HasSuffix(lower, ".dockerfile"):
+		case isStandardDockerfile(basename):
 			fmt.Printf("Processing Dockerfile: %s\n", path)
 			return processor.ProcessDockerfile(rc, path, config)
 		case lower == "docker-compose.yml",
@@ -54,12 +78,17 @@ func ScanPath(rc *regclient.RegClient, root string, config processor.ProcessorCo
 }
 
 // ProcessSingleFile processes a single file based on its type
+// More permissive than directory scanning since user explicitly specified the file
 func ProcessSingleFile(rc *regclient.RegClient, target string, config processor.ProcessorConfig) error {
-	lower := strings.ToLower(filepath.Base(target))
+	basename := filepath.Base(target)
+	lower := strings.ToLower(basename)
 	ext := strings.ToLower(filepath.Ext(target))
 
 	switch {
-	case lower == "dockerfile" || strings.HasSuffix(lower, ".dockerfile"):
+	// More permissive Dockerfile detection for explicit file paths
+	case lower == "dockerfile" ||
+		strings.HasSuffix(lower, ".dockerfile") ||
+		strings.HasPrefix(lower, "dockerfile"):
 		return processor.ProcessDockerfile(rc, target, config)
 	case ext == ".yml" || ext == ".yaml":
 		return processor.ProcessCompose(rc, target, config)
