@@ -1,4 +1,4 @@
-# gh-pin 📍
+# gh-pin 📌
 
 [![test](https://github.com/grantbirki/gh-pin/actions/workflows/test.yml/badge.svg)](https://github.com/grantbirki/gh-pin/actions/workflows/test.yml)
 [![build](https://github.com/grantbirki/gh-pin/actions/workflows/build.yml/badge.svg)](https://github.com/grantbirki/gh-pin/actions/workflows/build.yml)
