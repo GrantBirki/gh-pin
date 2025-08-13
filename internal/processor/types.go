@@ -16,6 +16,7 @@ type ProcessorConfig struct {
 	NoColor        bool
 	Pervasive      bool
 	ExpandRegistry bool
+	ForceMode      string // "docker", "actions", or "" for auto-detection
 }
 
 // getFileMode returns the file mode of the given path, defaulting to 0644 if unable to stat

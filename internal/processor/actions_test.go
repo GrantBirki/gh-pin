@@ -227,7 +227,7 @@ func TestUpdateSuffixWithPinComment(t *testing.T) {
 			name:        "existing comment",
 			suffix:      " # some comment",
 			originalRef: "v4",
-			want:        " # pin@v4 some comment",
+			want:        " # pin@v4 # some comment", // Preserves existing comment
 		},
 		{
 			name:        "already has pin comment",
@@ -253,12 +253,12 @@ func TestUpdateSuffixWithPinComment(t *testing.T) {
 func TestProcessActions(t *testing.T) {
 	// Create temporary directory for test files
 	tempDir := t.TempDir()
-	
+
 	tests := []struct {
-		name     string
-		content  string
-		config   ProcessorConfig
-		wantErr  bool
+		name    string
+		content string
+		config  ProcessorConfig
+		wantErr bool
 	}{
 		{
 			name: "basic action pinning",

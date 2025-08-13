@@ -17,10 +17,10 @@ import (
 
 // GitHubRef represents a GitHub repository reference
 type GitHubRef struct {
-	Owner  string
-	Repo   string
-	Ref    string
-	SHA    string
+	Owner string
+	Repo  string
+	Ref   string
+	SHA   string
 }
 
 // usesPattern matches GitHub Actions 'uses:' statements
@@ -42,26 +42,26 @@ func ProcessActions(rc *regclient.RegClient, path string, config ProcessorConfig
 
 	for scanner.Scan() {
 		line := scanner.Text()
-		
+
 		// Check if this line contains a uses: statement
 		if match := usesPattern.FindStringSubmatch(line); match != nil {
 			indent := match[1]
-			usesPrefix := match[2] 
+			usesPrefix := match[2]
 			actionRef := match[3]
 			suffix := match[4] // includes any comments
-			
+
 			// Check if action is already pinned to a SHA (40-char hex)
 			if isAlreadyPinnedToSHA(actionRef) {
 				output.WriteString(line + "\n")
 				continue
 			}
-			
+
 			// Check for pin comment directive
 			pinRef := extractPinComment(suffix)
 			if pinRef != "" {
 				actionRef = updateActionRefWithPinComment(actionRef, pinRef)
 			}
-			
+
 			// Parse the action reference
 			ref, err := parseActionRef(actionRef)
 			if err != nil {
@@ -69,13 +69,13 @@ func ProcessActions(rc *regclient.RegClient, path string, config ProcessorConfig
 				output.WriteString(line + "\n")
 				continue
 			}
-			
+
 			// Skip if already pinned to SHA
 			if isSHA(ref.Ref) {
 				output.WriteString(line + "\n")
 				continue
 			}
-			
+
 			// Resolve the tag/ref to a commit SHA
 			sha, err := resolveActionToSHA(ref)
 			if err != nil {
@@ -83,13 +83,13 @@ func ProcessActions(rc *regclient.RegClient, path string, config ProcessorConfig
 				output.WriteString(line + "\n")
 				continue
 			}
-			
+
 			// Create the pinned reference
 			pinnedRef := fmt.Sprintf("%s/%s@%s", ref.Owner, ref.Repo, sha)
-			
+
 			// Format the pin message
 			FormatActionPinMessage(actionRef, pinnedRef)
-			
+
 			// Update the line with pinned reference, preserving indentation and comments
 			newSuffix := updateSuffixWithPinComment(suffix, ref.Ref)
 			newLine := indent + usesPrefix + pinnedRef + newSuffix
@@ -97,7 +97,7 @@ func ProcessActions(rc *regclient.RegClient, path string, config ProcessorConfig
 			changed = true
 			continue
 		}
-		
+
 		output.WriteString(line + "\n")
 	}
 
@@ -118,7 +118,7 @@ func parseActionRef(actionRef string) (*GitHubRef, error) {
 	if match == nil {
 		return nil, fmt.Errorf("invalid action reference format: %s", actionRef)
 	}
-	
+
 	return &GitHubRef{
 		Owner: match[1],
 		Repo:  match[2],
@@ -141,7 +141,7 @@ func isSHA(ref string) bool {
 		return false
 	}
 	for _, c := range ref {
-		if !((c >= '0' && c <= '9') || (c >= 'a' && c <= 'f') || (c >= 'A' && c <= 'F')) {
+		if (c < '0' || c > '9') && (c < 'a' || c > 'f') && (c < 'A' || c > 'F') {
 			return false
 		}
 	}
@@ -174,54 +174,57 @@ func updateSuffixWithPinComment(suffix, originalRef string) string {
 	if extractPinComment(suffix) != "" {
 		return suffix
 	}
-	
+
 	// Add pin comment
 	if strings.TrimSpace(suffix) == "" {
-		return fmt.Sprintf(" # pin@%s", originalRef)
+		// For empty or whitespace-only suffix, append pin comment
+		return suffix + " # pin@" + originalRef
 	}
-	
+
 	// Insert pin comment before existing comment
 	if strings.Contains(suffix, "#") {
 		commentStart := strings.Index(suffix, "#")
 		before := suffix[:commentStart]
 		after := suffix[commentStart:]
-		return fmt.Sprintf("%spin@%s %s", before, originalRef, after)
+		return before + "# pin@" + originalRef + " " + after
 	}
-	
-	return fmt.Sprintf("%s # pin@%s", suffix, originalRef)
+
+	return suffix + " # pin@" + originalRef
 }
 
 // resolveActionToSHA resolves a GitHub action tag/ref to a commit SHA using GitHub API
 func resolveActionToSHA(ref *GitHubRef) (string, error) {
 	url := fmt.Sprintf("https://api.github.com/repos/%s/%s/commits/%s", ref.Owner, ref.Repo, ref.Ref)
-	
+
 	req, err := http.NewRequestWithContext(context.Background(), "GET", url, nil)
 	if err != nil {
 		return "", err
 	}
-	
+
 	// Add User-Agent header as required by GitHub API
 	req.Header.Set("User-Agent", "gh-pin")
-	
+
 	client := &http.Client{}
 	resp, err := client.Do(req)
 	if err != nil {
 		return "", err
 	}
-	defer resp.Body.Close()
-	
+	defer func() {
+		_ = resp.Body.Close()
+	}()
+
 	if resp.StatusCode != http.StatusOK {
 		return "", fmt.Errorf("GitHub API returned status %d for %s/%s@%s", resp.StatusCode, ref.Owner, ref.Repo, ref.Ref)
 	}
-	
+
 	var commit struct {
 		SHA string `json:"sha"`
 	}
-	
+
 	if err := json.NewDecoder(resp.Body).Decode(&commit); err != nil {
 		return "", err
 	}
-	
+
 	return commit.SHA, nil
 }
 
@@ -230,7 +233,7 @@ func FormatActionPinMessage(originalRef, pinnedRef string) {
 	// Parse original reference
 	origParsed, _ := parseActionRef(originalRef)
 	pinnedParsed, _ := parseActionRef(pinnedRef)
-	
+
 	if origParsed != nil && pinnedParsed != nil {
 		fmt.Printf("📌 [%s] %s@%s → %s@%s\n",
 			color.BlueString("ACTIONS"),

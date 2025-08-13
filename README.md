@@ -7,17 +7,17 @@
 [![release](https://github.com/grantbirki/gh-pin/actions/workflows/release.yml/badge.svg)](https://github.com/grantbirki/gh-pin/actions/workflows/release.yml)
 ![slsa-level3](docs/assets/slsa-level3.svg)
 
-Pin Docker container images to an exact index digest for better build reproducibility.
+Pin Docker container images and GitHub Actions to exact digests for better build reproducibility.
 
 ![gh-pin](docs/assets/gh-pin.png)
 
 ## About ⭐
 
-This project is a gh cli extension that is used to pin Docker container images to an exact index digest. This is useful for ensuring that builds are reproducible and secure.
+This project is a gh cli extension that is used to pin Docker container images and GitHub Actions to exact digests. This is useful for ensuring that builds are reproducible and secure.
 
-Container images referenced by mutable tags (like `latest` or `v1.0`) can change over time, leading to inconsistent builds and potential security vulnerabilities. When an image tag is updated to point to a new version, your builds may suddenly start using different base images, dependencies, or even malicious content without your knowledge.
+Container images referenced by mutable tags (like `latest` or `v1.0`) and GitHub Actions referenced by mutable tags (like `v4` or `main`) can change over time, leading to inconsistent builds and potential security vulnerabilities. When a tag is updated to point to a new version, your builds may suddenly start using different dependencies or even malicious content without your knowledge.
 
-The `gh pin` tool solves this by automatically converting mutable image tags to immutable digest references. Instead of `ubuntu:latest`, your files will reference `ubuntu@sha256:abc123...`, ensuring that the exact same image is used every time. This approach follows security best practices recommended by organizations like the [CNCF](https://www.cncf.io/online-programs/cloud-native-live-automate-pinning-github-actions-and-container-images-to-their-digests/) and [SLSA](https://slsa.dev/) for supply chain security.
+The `gh pin` tool solves this by automatically converting mutable references to immutable digest references. Instead of `ubuntu:latest`, your files will reference `ubuntu@sha256:abc123...`, and instead of `actions/checkout@v4`, your workflows will reference `actions/checkout@692973e3d937129bcbf40652eb9f2f61becf3332`. This ensures that the exact same versions are used every time. This approach follows security best practices recommended by organizations like the [CNCF](https://www.cncf.io/online-programs/cloud-native-live-automate-pinning-github-actions-and-container-images-to-their-digests/) and [SLSA](https://slsa.dev/) for supply chain security.
 
 > Moving towards immutable image references lives in the same ecosystem as [Hermetic Builds](https://software.birki.io/posts/hermetic-builds/) which is a topic I am passionate about and a key reason for building this CLI.
 
@@ -53,13 +53,19 @@ Pin images in a specific Docker compose file:
 gh pin docker-compose.yml
 ```
 
-Pin all Docker images in the current directory and subdirectories:
+Pin GitHub Actions in a workflow file:
+
+```bash
+gh pin .github/workflows/ci.yml
+```
+
+Pin all Docker images and GitHub Actions in the current directory and subdirectories:
 
 ```bash
 gh pin
 ```
 
-Pin all images in a specific directory and its subdirectories:
+Pin all images and actions in a specific directory and its subdirectories:
 
 ```bash
 gh pin /path/to/project
@@ -114,7 +120,20 @@ gh pin --dry-run --pervasive --expand-registry /path/to/project
 |-----------|------------------|-------------|
 | **Dockerfiles** | `Dockerfile*` | Any file starting with "Dockerfile" (ex: `Dockerfile`, `Dockerfile.test`, `Dockerfile.dev`, etc) |
 | **Docker Compose** | `docker-compose.yml`, `docker-compose.yaml` | Standard Docker Compose files |
+| **GitHub Actions** | `.github/workflows/*.yml`, `.github/workflows/*.yaml` | GitHub Actions workflow files |
 | **Generic YAML** | `*.yml`, `*.yaml` | When using `--pervasive` flag |
+
+### Force Mode
+
+You can force the tool to only process specific file types:
+
+```bash
+# Only process Docker-related files
+gh pin --mode=docker
+
+# Only process GitHub Actions workflows
+gh pin --mode=actions
+```
 
 ### Output Examples
 
@@ -122,6 +141,7 @@ gh pin --dry-run --pervasive --expand-registry /path/to/project
 $ gh pin --dry-run
 📌 [DOCKERFILE] ubuntu:latest → ubuntu@sha256:7c06e91f61fa88c08cc74f7e1b7c69ae24910d745357e0dfe1d2c0322aaf20f9
 📌 [COMPOSE] nginx:alpine → nginx@sha256:2d194b9da5f3b2f19d8b03b48d36c3f8af53e24b96b8c48a82db8d7b6e6e4c6a
+📌 [ACTIONS] actions/checkout@v4 → actions/checkout@692973e3...
 ```
 
 ### Exit Codes
@@ -131,36 +151,41 @@ $ gh pin --dry-run
 
 ## How it Works 📚
 
-The `gh-pin` CLI scans your project files and replaces mutable image tags with immutable digest references for better security and reproducibility.
+The `gh-pin` CLI scans your project files and replaces mutable references with immutable digest references for better security and reproducibility.
 
 ### High-Level Process
 
-1. **File Discovery**: Recursively scans directories to find Docker-related files:
+1. **File Discovery**: Recursively scans directories to find supported files:
    - `Dockerfile*` (any file starting with "Dockerfile")
    - `docker-compose.yml/yaml` files
-   - Generic `.yml/.yaml` files containing Docker images (when using `--pervasive` flag)
+   - `.github/workflows/*.yml` GitHub Actions workflow files
+   - Generic `.yml/.yaml` files (when using `--pervasive` flag)
 
-2. **Image Detection**: Parses files to identify container image references:
+2. **Reference Detection**: Parses files to identify mutable references:
    - Extracts `FROM` statements in Dockerfiles
    - Finds `image:` fields in Compose/YAML files
-   - Skips images that already have digest pinning
+   - Extracts `uses:` statements in GitHub Actions workflows
+   - Skips references that already have digest/SHA pinning
 
-3. **Registry Lookup**: For each unpinned image, performs efficient registry queries:
-   - Makes HTTP `HEAD` requests to container registries (Docker Hub, GHCR, etc.)
-   - Retrieves manifest metadata without downloading full manifest content
-   - Extracts the SHA256 digest that uniquely identifies the image
+3. **Resolution**: For each unpinned reference, performs API queries:
+   - **Container Images**: Makes HTTP `HEAD` requests to container registries (Docker Hub, GHCR, etc.)
+   - **GitHub Actions**: Makes API requests to GitHub to resolve tags to commit SHAs
+   - Retrieves digest/SHA that uniquely identifies the version
 
-4. **File Updates**: Replaces mutable tags with immutable digest references:
+4. **File Updates**: Replaces mutable references with immutable digest references:
    - `nginx:latest` → `nginx@sha256:abc123...`
    - `ubuntu:20.04` → `ubuntu@sha256:def456...`
+   - `actions/checkout@v4` → `actions/checkout@692973e3d937129bcbf40652eb9f2f61becf3332`
    - Preserves original formatting and indentation
+   - Supports comment-based pinning (e.g., `# pin@v5`)
 
 ### Benefits
 
-- **Reproducible Builds**: Same digest always references the exact same image
+- **Reproducible Builds**: Same digest/SHA always references the exact same version
 - **Security**: Prevents supply chain attacks from tag manipulation
 - **Efficiency**: Uses HEAD requests to minimize network bandwidth
-- **Compatibility**: Works with all OCI-compatible registries
+- **Compatibility**: Works with all OCI-compatible registries and GitHub Actions
+- **Comment Support**: Supports `# pin@v5` style comments for explicit version control
 
 ## Verifying Release Binaries 🔏
 

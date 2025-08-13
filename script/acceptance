@@ -43,14 +43,14 @@ echo -e "${BLUE}Running gh-pin on test Dockerfile...${OFF}"
 go run -mod=vendor ./cmd/gh-pin "${TEMP_DIR}/Dockerfile"
 
 # Verify the file now contains SHA digests
-if ! grep -q "FROM docker.io/library/ubuntu:latest@sha256:" "${TEMP_DIR}/Dockerfile"; then
+if ! grep -q "FROM ubuntu@sha256:" "${TEMP_DIR}/Dockerfile"; then
     echo -e "${RED}❌ FAIL: ubuntu:latest was not pinned to SHA digest${OFF}"
     echo "File contents:"
     cat "${TEMP_DIR}/Dockerfile"
     exit 1
 fi
 
-if ! grep -q "FROM docker.io/library/alpine:3.18@sha256:" "${TEMP_DIR}/Dockerfile"; then
+if ! grep -q "FROM alpine@sha256:" "${TEMP_DIR}/Dockerfile"; then
     echo -e "${RED}❌ FAIL: alpine:3.18 was not pinned to SHA digest${OFF}"
     echo "File contents:"
     cat "${TEMP_DIR}/Dockerfile"
@@ -94,7 +94,7 @@ echo -e "${BLUE}Test 4: Algorithm flag functionality...${OFF}"
 
 # Create a test file with a sha256-pinned image
 mkdir -p "${TEMP_DIR}/algo-test"
-echo "FROM docker.io/library/ubuntu:latest@sha256:7c06e91f61fa88c08cc74f7e1b7c69ae24910d745357e0dfe1d2c0322aaf20f9" > "${TEMP_DIR}/algo-test/Dockerfile"
+echo "FROM ubuntu@sha256:7c06e91f61fa88c08cc74f7e1b7c69ae24910d745357e0dfe1d2c0322aaf20f9" > "${TEMP_DIR}/algo-test/Dockerfile"
 
 # Test default behavior (should skip sha256-pinned image)
 output=$(go run -mod=vendor ./cmd/gh-pin --dry-run "${TEMP_DIR}/algo-test/Dockerfile" 2>&1 || true)
@@ -113,5 +113,53 @@ if [[ ! "$output" =~ "DOCKERFILE" ]]; then
 fi
 
 echo -e "${GREEN}✅ PASS: Algorithm flag works correctly${OFF}"
+
+# Test 5: GitHub Actions workflow processing
+echo -e "${BLUE}Test 5: GitHub Actions workflow processing...${OFF}"
+
+# Create a test workflow file
+mkdir -p "${TEMP_DIR}/github-actions-test/.github/workflows"
+cat > "${TEMP_DIR}/github-actions-test/.github/workflows/test.yml" << 'EOF'
+name: test
+on: push
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+EOF
+
+# Test dry-run mode for GitHub Actions (to avoid API calls)
+echo -e "${BLUE}Testing GitHub Actions detection in dry-run mode...${OFF}"
+output=$(go run -mod=vendor ./cmd/gh-pin --dry-run "${TEMP_DIR}/github-actions-test/.github/workflows/test.yml" 2>&1 || true)
+if [[ ! "$output" =~ "Processing GitHub Actions" ]]; then
+    echo -e "${RED}❌ FAIL: GitHub Actions workflow should be detected${OFF}"
+    echo "Got output: $output"
+    exit 1
+fi
+
+echo -e "${GREEN}✅ PASS: GitHub Actions workflow detection works correctly${OFF}"
+
+# Test force mode flags
+echo -e "${BLUE}Test 6: Force mode flags...${OFF}"
+
+# Test force docker mode on a workflow file (should be ignored)
+output=$(go run -mod=vendor ./cmd/gh-pin --dry-run --mode=docker "${TEMP_DIR}/github-actions-test/.github/workflows/test.yml" 2>&1 || true)
+if [[ "$output" =~ "Processing" ]]; then
+    echo -e "${RED}❌ FAIL: Force docker mode should ignore GitHub Actions workflows${OFF}"
+    echo "Got output: $output"
+    exit 1
+fi
+
+# Test force actions mode on a docker file (should be ignored) 
+output=$(go run -mod=vendor ./cmd/gh-pin --dry-run --mode=actions "${TEMP_DIR}/Dockerfile" 2>&1 || true)
+if [[ "$output" =~ "Processing" ]]; then
+    echo -e "${RED}❌ FAIL: Force actions mode should ignore Dockerfiles${OFF}"
+    echo "Got output: $output"
+    exit 1
+fi
+
+echo -e "${GREEN}✅ PASS: Force mode flags work correctly${OFF}"
 
 echo -e "${GREEN}🎉 All acceptance tests passed!${OFF}"
