@@ -151,8 +151,8 @@ $ gh pin --dry-run
 
 ### Exit Codes
 
-- `0`: Success - all images processed successfully
-- `1`: Error - failed to process one or more files or images
+- `0`: Success - all resources processed successfully
+- `1`: Error - failed to process one or more resources
 
 ## How it Works 📚
 
