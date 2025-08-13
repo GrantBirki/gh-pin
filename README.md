@@ -50,6 +50,12 @@ Pin images in a specific Dockerfile:
 gh pin Dockerfile
 ```
 
+Pin images in a specific Dockerfile using an exact platform:
+
+```bash
+gh pin --platform=linux/amd64 Dockerfile
+```
+
 Pin images in a specific Docker compose file:
 
 ```bash
@@ -85,6 +91,7 @@ gh pin /path/to/project
 | `--expand-registry` | Expand short image names to fully qualified registry names | `false` |
 | `--no-color` | Disable colored output | `false` |
 | `--pervasive` | Scan all YAML files, not just docker-compose files | `false` |
+| `--platform` | Target specific platform architecture (e.g., `linux/amd64`, `linux/arm64`) | (uses index digest) |
 | `--recursive` | Scan directories recursively | `true` |
 | `--version` | Show version information | `false` |
 
@@ -119,6 +126,16 @@ gh pin --pervasive
 gh pin --dry-run --pervasive --expand-registry /path/to/project
 ```
 
+**Pin to specific platform architecture:**
+
+```bash
+# Pin for linux/amd64 architecture specifically
+gh pin --platform=linux/amd64 docker-compose.yml
+
+# Pin for ARM64 (Apple Silicon, AWS Graviton instances)
+gh pin --platform=linux/arm64 .
+```
+
 ### Supported File Types
 
 | File Type | Detection Pattern | Description |
@@ -127,6 +144,88 @@ gh pin --dry-run --pervasive --expand-registry /path/to/project
 | **Docker Compose** | `docker-compose.yml`, `docker-compose.yaml` | Standard Docker Compose files |
 | **GitHub Actions** | `.github/workflows/*.yml`, `.github/workflows/*.yaml` | GitHub Actions workflow files |
 | **Generic YAML** | `*.yml`, `*.yaml` | When using `--pervasive` flag |
+
+### Platform-Specific Pinning
+
+The `--platform` flag allows you to pin images to platform-specific manifest digests instead of multi-platform index digests.
+
+**Index Digests (Default Behavior):**
+
+```bash
+# Pins to the multi-platform index digest
+gh pin Dockerfile
+# Result: FROM nginx@sha256:abc123... # pin@nginx:latest
+```
+
+**Platform-Specific Manifest Digests:**
+
+Increased determinism by pinning to a specific platform's manifest digest:
+
+```bash
+# Pins to the linux/amd64 specific manifest digest
+gh pin --platform=linux/amd64 Dockerfile
+# Result: FROM nginx:latest@sha256:def456...
+```
+
+#### When to Use Index vs Platform-Specific Digests
+
+**Use Index Digests (Default) when:**
+
+- You want maximum compatibility across different architectures
+- Your build system automatically selects the correct platform
+- You're building multi-platform images that should work everywhere
+- You want human-readable comments showing the original tag
+
+**Use Platform-Specific Digests (`--platform`) when:**
+
+- You need deterministic builds for a specific architecture
+- You're building for embedded systems or specific hardware
+- You want to ensure the exact same binary artifacts every time
+- You're troubleshooting platform-specific issues
+- Your deployment targets only run on specific architectures
+
+#### Supported Platforms
+
+Common platform specifications include:
+
+- `linux/amd64` - 64-bit x86 Linux (most common)
+- `linux/arm64` - 64-bit ARM Linux (Apple Silicon, AWS Graviton, etc.)
+- `linux/arm/v7` - 32-bit ARM Linux
+- `linux/arm64/v8` - 64-bit ARM Linux (Raspberry Pi, etc.)
+- `windows/amd64` - 64-bit x86 Windows
+- `darwin/amd64` - 64-bit x86 macOS
+- `darwin/arm64` - 64-bit ARM macOS (Apple Silicon)
+
+#### Platform Examples
+
+**Target specific architecture:**
+
+```bash
+gh pin --platform=linux/amd64 docker-compose.yml
+
+gh pin --platform=linux/arm64 Dockerfile
+
+gh pin --platform=linux/arm/v7 docker-compose.yml
+```
+
+**Error handling:**
+
+```bash
+# If the provided platform doesn't exist it will gracefully falls back to index digest
+gh pin --platform=invalid/platform Dockerfile
+# Warning: Could not find manifest for platform invalid/platform. Falling back to index digest.
+```
+
+#### Index vs Platform Digest Comparison
+
+| Aspect | Index Digest (Default) | Platform-Specific Digest |
+|--------|------------------------|--------------------------|
+| **Compatibility** | Works across all supported platforms | Works only on specified platform |
+| **Build Reproducibility** | Good (platform selected at runtime) | Excellent (exact binary artifacts) |
+| **Output Format** | `image@sha256:hash # pin@tag` | `image:tag@sha256:hash` |
+| **Comments** | Shows human-readable original tag | Clean format, no comments |
+| **Use Case** | General development, CI/CD | Specific deployments, debugging, hardened CI/CD environment |
+| **Fallback** | N/A | Falls back to index if platform unavailable |
 
 ### Force Mode
 
@@ -142,10 +241,21 @@ gh pin --mode=actions
 
 ### Output Examples
 
+**Default behavior (index digests with human-readable comments):**
+
 ```bash
 $ gh pin --dry-run
-📌 [DOCKERFILE] ubuntu:latest → ubuntu@sha256:7c06e91f61fa88c08cc74f7e1b7c69ae24910d745357e0dfe1d2c0322aaf20f9
-📌 [COMPOSE] nginx:alpine → nginx@sha256:2d194b9da5f3b2f19d8b03b48d36c3f8af53e24b96b8c48a82db8d7b6e6e4c6a
+📌 [DOCKERFILE] ubuntu:latest → ubuntu@sha256:7c06e91f61fa88c08cc74f7e1b7c69ae24910d745357e0dfe1d2c0322aaf20f9 # pin@ubuntu:latest
+📌 [COMPOSE] nginx:alpine → nginx@sha256:2d194b9da5f3b2f19d8b03b48d36c3f8af53e24b96b8c48a82db8d7b6e6e4c6a # pin@nginx:alpine
+📌 [ACTIONS] actions/checkout@v5 → actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8
+```
+
+**Platform-specific behavior (clean format, no comments):**
+
+```bash
+$ gh pin --platform=linux/amd64 --dry-run
+📌 [DOCKERFILE] ubuntu:latest → ubuntu:latest@sha256:1b8d8ff4777f36f19bfe73ee4df61e3a0b789caeff29caa019539ec7c9a57f95
+📌 [COMPOSE] nginx:alpine → nginx:alpine@sha256:a97eb9ecc708c8aa715ddc4b375e7c130bd32e0bce17c74b4f8c3a90e8338e14
 📌 [ACTIONS] actions/checkout@v5 → actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8
 ```
 
@@ -177,7 +287,39 @@ The `gh-pin` CLI scans your project files and replaces mutable references with i
    - **GitHub Actions**: Makes API requests to GitHub to resolve tags to commit SHAs
    - Retrieves digest/SHA that uniquely identifies the version
 
-4. **File Updates**: Replaces mutable references with immutable digest references:
+### Understanding Index vs Manifest Digests
+
+When pinning container images, `gh-pin` can target two different types of digests:
+
+**Index Digests (Default):**
+
+- Point to a **manifest list/index** that contains multiple platform-specific manifests
+- Allow Docker/container runtimes to automatically select the correct platform at pull time
+- Provide maximum compatibility across different architectures
+- Example: `nginx@sha256:abc123...` works on AMD64, ARM64, etc.
+
+**Platform-Specific Manifest Digests (`--platform` flag):**
+
+- Point directly to a **single platform's manifest**
+- Ensure you get exactly the same binary artifacts every time
+- Provide deterministic builds for specific architectures
+- Example: `nginx:latest@sha256:def456...` only works on the specified platform
+
+**Visual Example:**
+
+```text
+Container Registry:
+├── nginx:latest (index/manifest list)
+│   ├── linux/amd64 → manifest digest: sha256:aaa111...
+│   ├── linux/arm64 → manifest digest: sha256:bbb222...
+│   └── linux/arm/v7 → manifest digest: sha256:ccc333...
+└── Index digest: sha256:index123...
+
+Default: nginx@sha256:index123... (points to manifest list)
+--platform=linux/amd64: nginx:latest@sha256:aaa111... (points to specific manifest)
+```
+
+1. **File Updates**: Replaces mutable references with immutable digest references:
    - `nginx:latest` → `nginx@sha256:abc123...`
    - `ubuntu:20.04` → `ubuntu@sha256:def456...`
    - `actions/checkout@v5` → `actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8`
