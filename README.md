@@ -259,6 +259,54 @@ $ gh pin --platform=linux/amd64 --dry-run
 📌 [ACTIONS] actions/checkout@v5 → actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8
 ```
 
+#### What Gets Written to Files
+
+**Index Digests (Default):** Files are updated with **both the digest and human-readable comments**:
+
+```dockerfile
+# Dockerfile - BEFORE
+FROM ubuntu:latest
+
+# Dockerfile - AFTER  
+FROM ubuntu@sha256:7c06e91f61fa88c08cc74f7e1b7c69ae24910d745357e0dfe1d2c0322aaf20f9 # pin@ubuntu:latest
+```
+
+```yaml
+# docker-compose.yml - BEFORE
+services:
+  web:
+    image: nginx:alpine
+
+# docker-compose.yml - AFTER
+services:
+  web:
+    image: nginx@sha256:2d194b9da5f3b2f19d8b03b48d36c3f8af53e24b96b8c48a82db8d7b6e6e4c6a # pin@nginx:alpine
+```
+
+**Platform-Specific Digests:** Files are updated with **clean format only** (no comments):
+
+```dockerfile  
+# Dockerfile - BEFORE
+FROM ubuntu:latest
+
+# Dockerfile - AFTER
+FROM ubuntu:latest@sha256:1b8d8ff4777f36f19bfe73ee4df61e3a0b789caeff29caa019539ec7c9a57f95
+```
+
+```yaml
+# docker-compose.yml - BEFORE  
+services:
+  web:
+    image: nginx:alpine
+
+# docker-compose.yml - AFTER
+services:
+  web:
+    image: nginx:alpine@sha256:a97eb9ecc708c8aa715ddc4b375e7c130bd32e0bce17c74b4f8c3a90e8338e14
+```
+
+> **Note:** Comments are only added when no existing comments are present on the line. If you already have comments, they will be preserved unchanged.
+
 ### Exit Codes
 
 - `0`: Success - all resources processed successfully
@@ -286,6 +334,12 @@ The `gh-pin` CLI scans your project files and replaces mutable references with i
    - **Container Images**: Makes HTTP `HEAD` requests to container registries (Docker Hub, GHCR, etc.)
    - **GitHub Actions**: Makes API requests to GitHub to resolve tags to commit SHAs
    - Retrieves digest/SHA that uniquely identifies the version
+
+4. **File Updates**: Replaces mutable references with immutable ones while preserving file structure:
+   - **Index digests**: Updates with digest + human-readable comment to preserve image context (e.g., `nginx@sha256:abc123 # pin@nginx:alpine`)
+   - **Platform-specific digests**: Updates with clean format only (e.g., `nginx:alpine@sha256:def456`)
+   - **Existing comments**: Preserved unchanged when already present
+   - **File formatting**: Original indentation, order, and structure maintained
 
 ### Understanding Index vs Manifest Digests
 
