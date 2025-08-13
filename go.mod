@@ -3,6 +3,7 @@ module github.com/grantbirki/gh-pin
 go 1.24.6
 
 require (
+	github.com/cli/go-gh/v2 v2.12.2
 	github.com/fatih/color v1.18.0
 	github.com/goccy/go-yaml v1.18.0
 	github.com/regclient/regclient v0.9.0
@@ -10,12 +11,12 @@ require (
 
 require (
 	github.com/aymanbagabas/go-osc52/v2 v2.0.1 // indirect
-	github.com/cli/go-gh/v2 v2.12.2 // indirect
 	github.com/cli/safeexec v1.0.0 // indirect
 	github.com/cli/shurcooL-graphql v0.0.4 // indirect
 	github.com/docker/libtrust v0.0.0-20160708172513-aabc10ec26b7 // indirect
 	github.com/henvic/httpretty v0.0.6 // indirect
 	github.com/klauspost/compress v1.18.0 // indirect
+	github.com/kr/pretty v0.3.1 // indirect
 	github.com/lucasb-eyer/go-colorful v1.2.0 // indirect
 	github.com/mattn/go-colorable v0.1.14 // indirect
 	github.com/mattn/go-isatty v0.0.20 // indirect
