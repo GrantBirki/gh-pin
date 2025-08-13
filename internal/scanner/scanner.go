@@ -65,7 +65,7 @@ func detectFileType(path string, data []byte, config processor.ProcessorConfig) 
 			return "actions"
 		}
 		// Check if it contains GitHub Actions workflow structure
-		var workflow map[string]interface{}
+		var workflow map[string]any
 		if err := yaml.Unmarshal(data, &workflow); err == nil {
 			if _, hasJobs := workflow["jobs"]; hasJobs {
 				if _, hasOn := workflow["on"]; hasOn {

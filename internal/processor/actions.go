@@ -27,12 +27,12 @@ var actionRefPattern = regexp.MustCompile(`^([^/]+)/([^@]+)@(.+)$`)
 // ProcessActions updates GitHub Actions workflow files to pin action references to commit SHAs
 func ProcessActions(rc *regclient.RegClient, path string, config ProcessorConfig) error {
 	return ProcessFileGeneric(path, config, func(data []byte, config ProcessorConfig) ([]byte, bool, error) {
-		return processActionsContent(rc, data, config)
+		return processActionsContent(data)
 	})
 }
 
 // processActionsContent processes the content of a GitHub Actions workflow file
-func processActionsContent(rc *regclient.RegClient, data []byte, config ProcessorConfig) ([]byte, bool, error) {
+func processActionsContent(data []byte) ([]byte, bool, error) {
 	var output bytes.Buffer
 	scanner := bufio.NewScanner(bytes.NewReader(data))
 	changed := false
@@ -139,12 +139,6 @@ func isSHA(ref string) bool {
 		}
 	}
 	return true
-}
-
-// extractPinComment extracts pin directive from comment like "# pin@v5"
-// DEPRECATED: Use ExtractPinComment from common.go instead
-func extractPinComment(suffix string) string {
-	return ExtractPinComment(suffix)
 }
 
 // updateActionRefWithPinComment updates action ref based on pin comment
