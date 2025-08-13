@@ -1,6 +1,8 @@
 package processor
 
 import (
+	"fmt"
+
 	"github.com/goccy/go-yaml"
 	"github.com/regclient/regclient"
 )
@@ -23,24 +25,42 @@ func processComposeContent(rc *regclient.RegClient, data []byte, config Processo
 	var pinnedImages []string
 	var serviceNames []string
 
-	for svc, def := range cf.Services {
-		if def.Image != "" {
-			if !hasDigest(def.Image, config.Algorithm) {
-				pinned, err := PinImage(rc, def.Image, config)
-				if err != nil {
-					LogWarning("%v", err)
-					continue
+	// Access services if they exist
+	if servicesData, exists := cf["services"]; exists {
+		if services, ok := servicesData.(map[string]interface{}); ok {
+			for svcName, svcData := range services {
+				if svcDef, ok := svcData.(map[string]interface{}); ok {
+					if imageValue, exists := svcDef["image"]; exists {
+						if imageStr, ok := imageValue.(string); ok && imageStr != "" {
+							if !hasDigest(imageStr, config.Algorithm) {
+								// Get pinned image - for compose files, we'll use the clean digest format
+								pinned, err := PinImageWithComment(rc, imageStr, config, false)
+								if err != nil {
+									LogWarning("%v", err)
+									continue
+								}
+								if pinned != "" {
+									// Create a version with comment for display purposes only
+									displayVersion := pinned
+									if config.Platform == "" {
+										// Only add comment for index digests, not platform-specific manifests
+										imageName, imageTag := ParseImageNameAndTag(imageStr)
+										if imageTag != "" {
+											displayVersion += fmt.Sprintf(" # pin@%s:%s", imageName, imageTag)
+										}
+									}
+									FormatDockerPin("COMPOSE", svcName, imageStr, displayVersion)
+									// Update only the image field with clean version, preserving all other properties
+									svcDef["image"] = pinned
+									changed = true
+								}
+							} else {
+								pinnedImages = append(pinnedImages, imageStr)
+								serviceNames = append(serviceNames, svcName)
+							}
+						}
+					}
 				}
-				if pinned != "" {
-					FormatDockerPin("COMPOSE", svc, def.Image, pinned)
-					cf.Services[svc] = struct {
-						Image string `yaml:"image"`
-					}{Image: pinned}
-					changed = true
-				}
-			} else {
-				pinnedImages = append(pinnedImages, def.Image)
-				serviceNames = append(serviceNames, svc)
 			}
 		}
 	}
@@ -51,7 +71,7 @@ func processComposeContent(rc *regclient.RegClient, data []byte, config Processo
 	}
 
 	if changed {
-		out, err := yaml.Marshal(&cf)
+		out, err := yaml.Marshal(cf)
 		if err != nil {
 			return nil, false, err
 		}

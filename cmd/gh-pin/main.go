@@ -23,6 +23,7 @@ var (
 	algo           = flag.String("algo", "sha256", "digest algorithm to check for (sha256, sha512, etc.)")
 	forceMode      = flag.String("mode", "", "force processing mode: 'docker' for containers only, 'actions' for GitHub Actions only")
 	quiet          = flag.Bool("quiet", false, "suppress informational messages when no changes are needed")
+	platform       = flag.String("platform", "", "pin to platform-specific manifest digest (e.g., linux/amd64, linux/arm/v7)")
 )
 
 func main() {
@@ -40,12 +41,15 @@ func main() {
 	}
 
 	if len(flag.Args()) == 0 {
-		fmt.Fprintf(os.Stderr, "Usage: %s [--version] [--dry-run] [--no-color] [--recursive=false] [--pervasive] [--expand-registry] [--algo=sha256] [--mode=docker|actions] [--quiet] <file|dir> [file|dir...]\n", os.Args[0])
+		fmt.Fprintf(os.Stderr, "Usage: %s [--version] [--dry-run] [--no-color] [--recursive=false] [--pervasive] [--expand-registry] [--algo=sha256] [--mode=docker|actions] [--quiet] [--platform=linux/amd64] <file|dir> [file|dir...]\n", os.Args[0])
 		fmt.Fprintf(os.Stderr, "\nSupported file types:\n")
 		fmt.Fprintf(os.Stderr, "  - Dockerfiles (FROM statements)\n")
 		fmt.Fprintf(os.Stderr, "  - Docker Compose files (image: fields)\n")
 		fmt.Fprintf(os.Stderr, "  - GitHub Actions workflows (uses: statements)\n")
 		fmt.Fprintf(os.Stderr, "  - Generic YAML files (with --pervasive flag)\n")
+		fmt.Fprintf(os.Stderr, "\nPlatform-specific pinning:\n")
+		fmt.Fprintf(os.Stderr, "  Use --platform=<arch> to pin to manifest-specific digests (e.g., linux/amd64, linux/arm/v7)\n")
+		fmt.Fprintf(os.Stderr, "  Without --platform, images are pinned to index digests with human-readable comments\n")
 		os.Exit(1)
 	}
 
@@ -58,6 +62,7 @@ func main() {
 		ExpandRegistry: *expandRegistry,
 		ForceMode:      *forceMode,
 		Quiet:          *quiet,
+		Platform:       *platform,
 		GitHubResolver: &processor.DefaultGitHubResolver{},
 	}
 
