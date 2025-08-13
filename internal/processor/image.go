@@ -18,13 +18,8 @@ func hasDigest(image, algorithm string) bool {
 }
 
 // PinImage resolves an image tag to its immutable digest using regclient
+// Returns clean tag@digest format for better Docker compatibility
 func PinImage(rc *regclient.RegClient, image string, config ProcessorConfig) (string, error) {
-	return PinImageWithComment(rc, image, config)
-}
-
-// PinImageWithComment resolves an image tag to its immutable digest using regclient
-// Always returns clean tag@digest format for better Docker compatibility
-func PinImageWithComment(rc *regclient.RegClient, image string, config ProcessorConfig) (string, error) {
 	r, err := ref.New(image)
 	if err != nil {
 		return "", fmt.Errorf("parse ref %q: %w", image, err)

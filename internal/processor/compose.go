@@ -44,8 +44,8 @@ func processComposeContent(rc *regclient.RegClient, data []byte, config Processo
 			suffix := match[3]   // " # some comment" or empty
 
 			if !hasDigest(imageRef, config.Algorithm) {
-				// Get pinned image - for compose files, we'll use the clean digest format
-				pinned, err := PinImageWithComment(rc, imageRef, config)
+				// Get pinned image using clean tag@digest format
+				pinned, err := PinImage(rc, imageRef, config)
 				if err != nil {
 					LogWarning("%v", err)
 					output.WriteString(line + "\n")
