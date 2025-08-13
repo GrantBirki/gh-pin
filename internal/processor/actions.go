@@ -3,14 +3,12 @@ package processor
 import (
 	"bufio"
 	"bytes"
-	"context"
-	"encoding/json"
 	"fmt"
-	"net/http"
 	"os"
 	"regexp"
 	"strings"
 
+	"github.com/cli/go-gh/v2/pkg/api"
 	"github.com/fatih/color"
 	"github.com/regclient/regclient"
 )
@@ -192,37 +190,25 @@ func updateSuffixWithPinComment(suffix, originalRef string) string {
 	return suffix + " # pin@" + originalRef
 }
 
-// resolveActionToSHA resolves a GitHub action tag/ref to a commit SHA using GitHub API
+// resolveActionToSHA resolves a GitHub action tag/ref to a commit SHA using GitHub CLI's REST client
 func resolveActionToSHA(ref *GitHubRef) (string, error) {
-	url := fmt.Sprintf("https://api.github.com/repos/%s/%s/commits/%s", ref.Owner, ref.Repo, ref.Ref)
-
-	req, err := http.NewRequestWithContext(context.Background(), "GET", url, nil)
+	// Create a REST client using the pre-hydrated GitHub CLI client
+	restClient, err := api.DefaultRESTClient()
 	if err != nil {
-		return "", err
+		return "", fmt.Errorf("failed to create GitHub REST client: %w", err)
 	}
 
-	// Add User-Agent header as required by GitHub API
-	req.Header.Set("User-Agent", "gh-pin")
-
-	client := &http.Client{}
-	resp, err := client.Do(req)
-	if err != nil {
-		return "", err
-	}
-	defer func() {
-		_ = resp.Body.Close()
-	}()
-
-	if resp.StatusCode != http.StatusOK {
-		return "", fmt.Errorf("GitHub API returned status %d for %s/%s@%s", resp.StatusCode, ref.Owner, ref.Repo, ref.Ref)
-	}
+	// API endpoint path
+	path := fmt.Sprintf("repos/%s/%s/commits/%s", ref.Owner, ref.Repo, ref.Ref)
 
 	var commit struct {
 		SHA string `json:"sha"`
 	}
 
-	if err := json.NewDecoder(resp.Body).Decode(&commit); err != nil {
-		return "", err
+	// Make the API call using the GitHub CLI's REST client
+	err = restClient.Get(path, &commit)
+	if err != nil {
+		return "", fmt.Errorf("failed to resolve %s/%s@%s: %w", ref.Owner, ref.Repo, ref.Ref, err)
 	}
 
 	return commit.SHA, nil
