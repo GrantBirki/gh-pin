@@ -65,7 +65,7 @@ gh pin .github/workflows/ci.yml
 Pin all Docker images and GitHub Actions in the current directory and subdirectories:
 
 ```bash
-gh pin
+gh pin .
 ```
 
 Pin all images and actions in a specific directory and its subdirectories:
