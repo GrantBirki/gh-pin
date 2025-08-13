@@ -19,12 +19,12 @@ func hasDigest(image, algorithm string) bool {
 
 // PinImage resolves an image tag to its immutable digest using regclient
 func PinImage(rc *regclient.RegClient, image string, config ProcessorConfig) (string, error) {
-	return PinImageWithComment(rc, image, config, true)
+	return PinImageWithComment(rc, image, config)
 }
 
 // PinImageWithComment resolves an image tag to its immutable digest using regclient
-// includeComment controls whether to add human-readable comments for index digests
-func PinImageWithComment(rc *regclient.RegClient, image string, config ProcessorConfig, includeComment bool) (string, error) {
+// Always returns clean tag@digest format for better Docker compatibility
+func PinImageWithComment(rc *regclient.RegClient, image string, config ProcessorConfig) (string, error) {
 	r, err := ref.New(image)
 	if err != nil {
 		return "", fmt.Errorf("parse ref %q: %w", image, err)
@@ -32,11 +32,7 @@ func PinImageWithComment(rc *regclient.RegClient, image string, config Processor
 
 	ctx := context.Background()
 
-	// Store the original tag for human-readable comment
-	originalTag := r.Tag
-
 	var digest string
-	var usePlatformSpecific bool
 
 	// If platform is specified, try to get platform-specific manifest digest
 	if config.Platform != "" {
@@ -46,7 +42,6 @@ func PinImageWithComment(rc *regclient.RegClient, image string, config Processor
 			log.Printf("Warning: Could not find manifest for platform %s: %v. Falling back to index digest.", config.Platform, err)
 		} else {
 			digest = platformDigest
-			usePlatformSpecific = true
 		}
 	}
 
@@ -64,27 +59,17 @@ func PinImageWithComment(rc *regclient.RegClient, image string, config Processor
 	if config.ExpandRegistry {
 		imageRef = r.CommonName()
 	} else {
-		// Use the original reference, but we need to strip the tag if present
-		// since we're adding the digest
-		originalRef := r.Reference
-		if idx := strings.LastIndex(originalRef, ":"); idx != -1 && !strings.Contains(originalRef[idx:], "@") {
-			originalRef = originalRef[:idx]
+		// For both index and platform-specific digests, preserve the original tag
+		// This gives us a cleaner format like ruby:3.4.4-slim@sha256:hash
+		imageRef = r.Reference
+		// Strip existing digest if present (shouldn't happen with unpinned images)
+		if idx := strings.LastIndex(imageRef, "@"); idx != -1 {
+			imageRef = imageRef[:idx]
 		}
-		imageRef = originalRef
 	}
 
-	// Format the result based on whether we're using platform-specific or index digest
-	if usePlatformSpecific && originalTag != "" {
-		// For platform-specific manifests, use the full tag@digest format
-		return fmt.Sprintf("%s:%s@%s", imageRef, originalTag, digest), nil
-	} else {
-		// For index digests, use image@digest format with optional human-readable comment
-		result := fmt.Sprintf("%s@%s", imageRef, digest)
-		if originalTag != "" && includeComment {
-			result += fmt.Sprintf(" # pin@%s:%s", imageRef, originalTag)
-		}
-		return result, nil
-	}
+	// Use the clean tag@digest format for both index and platform-specific digests
+	return fmt.Sprintf("%s@%s", imageRef, digest), nil
 }
 
 // getPlatformSpecificDigest retrieves the digest for a specific platform manifest

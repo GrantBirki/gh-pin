@@ -43,14 +43,14 @@ echo -e "${BLUE}Running gh-pin on test Dockerfile...${OFF}"
 go run -mod=vendor ./cmd/gh-pin "${TEMP_DIR}/Dockerfile"
 
 # Verify the file now contains SHA digests
-if ! grep -q "FROM ubuntu@sha256:" "${TEMP_DIR}/Dockerfile"; then
+if ! grep -q "FROM ubuntu:latest@sha256:" "${TEMP_DIR}/Dockerfile"; then
     echo -e "${RED}❌ FAIL: ubuntu:latest was not pinned to SHA digest${OFF}"
     echo "File contents:"
     cat "${TEMP_DIR}/Dockerfile"
     exit 1
 fi
 
-if ! grep -q "FROM alpine@sha256:" "${TEMP_DIR}/Dockerfile"; then
+if ! grep -q "FROM alpine:3.18@sha256:" "${TEMP_DIR}/Dockerfile"; then
     echo -e "${RED}❌ FAIL: alpine:3.18 was not pinned to SHA digest${OFF}"
     echo "File contents:"
     cat "${TEMP_DIR}/Dockerfile"
@@ -94,7 +94,7 @@ echo -e "${BLUE}Test 4: Algorithm flag functionality...${OFF}"
 
 # Create a test file with a sha256-pinned image
 mkdir -p "${TEMP_DIR}/algo-test"
-echo "FROM ubuntu@sha256:7c06e91f61fa88c08cc74f7e1b7c69ae24910d745357e0dfe1d2c0322aaf20f9" > "${TEMP_DIR}/algo-test/Dockerfile"
+echo "FROM ubuntu:latest@sha256:7c06e91f61fa88c08cc74f7e1b7c69ae24910d745357e0dfe1d2c0322aaf20f9" > "${TEMP_DIR}/algo-test/Dockerfile"
 
 # Test default behavior (should skip sha256-pinned image)
 output=$(go run -mod=vendor ./cmd/gh-pin --dry-run --quiet "${TEMP_DIR}/algo-test/Dockerfile" 2>&1 || true)
@@ -254,18 +254,18 @@ echo -e "${GREEN}✅ PASS: Invalid platform handling works correctly (graceful f
 # Test default behavior (index digests) vs platform-specific behavior
 echo -e "${BLUE}Testing index digest vs platform-specific digest behavior...${OFF}"
 
-# Test default behavior (should show comments for index digests)
+# Test default behavior (should show clean tag@digest format)
 default_output=$(go run -mod=vendor ./cmd/gh-pin --dry-run "${TEMP_DIR}/platform-test/docker-compose.yml" 2>&1 || true)
-if [[ ! "$default_output" =~ "# pin@" ]]; then
-    echo -e "${RED}❌ FAIL: Default behavior should show human-readable comments${OFF}"
+if [[ ! "$default_output" =~ "nginx:latest@sha256:" ]]; then
+    echo -e "${RED}❌ FAIL: Default behavior should show clean tag@digest format${OFF}"
     echo "Got output: $default_output"
     exit 1
 fi
 
-# Test platform-specific behavior (should not show comments)
+# Test platform-specific behavior (should also show clean format)
 platform_output=$(go run -mod=vendor ./cmd/gh-pin --platform=linux/amd64 --dry-run "${TEMP_DIR}/platform-test/docker-compose.yml" 2>&1 || true)
-if [[ "$platform_output" =~ "# pin@" ]]; then
-    echo -e "${RED}❌ FAIL: Platform-specific behavior should not show comments${OFF}"
+if [[ ! "$platform_output" =~ "nginx:latest@sha256:" ]]; then
+    echo -e "${RED}❌ FAIL: Platform-specific behavior should show clean tag@digest format${OFF}"
     echo "Got output: $platform_output"
     exit 1
 fi
