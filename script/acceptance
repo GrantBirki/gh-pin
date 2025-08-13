@@ -162,4 +162,114 @@ fi
 
 echo -e "${GREEN}✅ PASS: Force mode flags work correctly${OFF}"
 
+# Test 7: Platform-specific pinning
+echo -e "${BLUE}Test 7: Platform-specific pinning functionality...${OFF}"
+
+# Create a test Dockerfile with multi-platform images
+mkdir -p "${TEMP_DIR}/platform-test"
+cat > "${TEMP_DIR}/platform-test/Dockerfile" << 'EOF'
+FROM nginx:latest
+FROM postgres:15
+EOF
+
+# Create a test Docker Compose file with multi-platform images
+cat > "${TEMP_DIR}/platform-test/docker-compose.yml" << 'EOF'
+version: '3.8'
+services:
+  web:
+    image: nginx:latest
+    ports:
+      - "80:80"
+  db:
+    image: postgres:15
+    environment:
+      POSTGRES_DB: mydb
+EOF
+
+# Test platform-specific Dockerfile pinning in dry-run mode
+echo -e "${BLUE}Testing platform-specific Dockerfile pinning (linux/amd64)...${OFF}"
+dockerfile_output=$(go run -mod=vendor ./cmd/gh-pin --platform=linux/amd64 --dry-run "${TEMP_DIR}/platform-test/Dockerfile" 2>&1 || true)
+if [[ ! "$dockerfile_output" =~ "nginx:latest" ]] || [[ ! "$dockerfile_output" =~ "postgres:15" ]]; then
+    echo -e "${RED}❌ FAIL: Platform-specific Dockerfile pinning should process images${OFF}"
+    echo "Got output: $dockerfile_output"
+    exit 1
+fi
+
+# Verify platform-specific output format (should show clean format without comments)
+if [[ "$dockerfile_output" =~ "# pin@" ]]; then
+    echo -e "${RED}❌ FAIL: Platform-specific pinning should not show comments${OFF}"
+    echo "Got output: $dockerfile_output"
+    exit 1
+fi
+
+echo -e "${GREEN}✅ PASS: Platform-specific Dockerfile pinning works correctly${OFF}"
+
+# Test platform-specific Docker Compose pinning in dry-run mode
+echo -e "${BLUE}Testing platform-specific Docker Compose pinning (linux/arm64)...${OFF}"
+compose_output=$(go run -mod=vendor ./cmd/gh-pin --platform=linux/arm64 --dry-run "${TEMP_DIR}/platform-test/docker-compose.yml" 2>&1 || true)
+if [[ ! "$compose_output" =~ "Processing Compose" ]] || [[ ! "$compose_output" =~ "nginx:latest" ]] || [[ ! "$compose_output" =~ "postgres:15" ]]; then
+    echo -e "${RED}❌ FAIL: Platform-specific Compose pinning should process images${OFF}"
+    echo "Got output: $compose_output"
+    exit 1
+fi
+
+# Verify platform-specific compose output format (should show clean format without comments)
+if [[ "$compose_output" =~ "# pin@" ]]; then
+    echo -e "${RED}❌ FAIL: Platform-specific Compose pinning should not show comments${OFF}"
+    echo "Got output: $compose_output"
+    exit 1
+fi
+
+echo -e "${GREEN}✅ PASS: Platform-specific Docker Compose pinning works correctly${OFF}"
+
+# Test that different platforms may produce different digests
+echo -e "${BLUE}Testing platform specificity with different architectures...${OFF}"
+
+# Test with linux/amd64
+amd64_output=$(go run -mod=vendor ./cmd/gh-pin --platform=linux/amd64 --dry-run "${TEMP_DIR}/platform-test/Dockerfile" 2>&1 || true)
+# Test with linux/arm64  
+arm64_output=$(go run -mod=vendor ./cmd/gh-pin --platform=linux/arm64 --dry-run "${TEMP_DIR}/platform-test/Dockerfile" 2>&1 || true)
+
+# Both should work (though they might have same or different digests)
+if [[ ! "$amd64_output" =~ "nginx:latest" ]] || [[ ! "$arm64_output" =~ "nginx:latest" ]]; then
+    echo -e "${RED}❌ FAIL: Both platform tests should process nginx:latest${OFF}"
+    echo "AMD64 output: $amd64_output"
+    echo "ARM64 output: $arm64_output"
+    exit 1
+fi
+
+echo -e "${GREEN}✅ PASS: Multiple platform architectures work correctly${OFF}"
+
+# Test platform flag with invalid platform
+echo -e "${BLUE}Testing invalid platform handling...${OFF}"
+invalid_platform_output=$(go run -mod=vendor ./cmd/gh-pin --platform=invalid/platform --dry-run "${TEMP_DIR}/platform-test/Dockerfile" 2>&1 || true)
+if [[ ! "$invalid_platform_output" =~ "Warning: Could not find manifest for platform" ]] || [[ ! "$invalid_platform_output" =~ "Falling back" ]]; then
+    echo -e "${RED}❌ FAIL: Invalid platform should produce warning and fallback message${OFF}"
+    echo "Got output: $invalid_platform_output"
+    exit 1
+fi
+
+echo -e "${GREEN}✅ PASS: Invalid platform handling works correctly (graceful fallback)${OFF}"
+
+# Test default behavior (index digests) vs platform-specific behavior
+echo -e "${BLUE}Testing index digest vs platform-specific digest behavior...${OFF}"
+
+# Test default behavior (should show comments for index digests)
+default_output=$(go run -mod=vendor ./cmd/gh-pin --dry-run "${TEMP_DIR}/platform-test/docker-compose.yml" 2>&1 || true)
+if [[ ! "$default_output" =~ "# pin@" ]]; then
+    echo -e "${RED}❌ FAIL: Default behavior should show human-readable comments${OFF}"
+    echo "Got output: $default_output"
+    exit 1
+fi
+
+# Test platform-specific behavior (should not show comments)
+platform_output=$(go run -mod=vendor ./cmd/gh-pin --platform=linux/amd64 --dry-run "${TEMP_DIR}/platform-test/docker-compose.yml" 2>&1 || true)
+if [[ "$platform_output" =~ "# pin@" ]]; then
+    echo -e "${RED}❌ FAIL: Platform-specific behavior should not show comments${OFF}"
+    echo "Got output: $platform_output"
+    exit 1
+fi
+
+echo -e "${GREEN}✅ PASS: Index vs platform-specific behavior works correctly${OFF}"
+
 echo -e "${GREEN}🎉 All acceptance tests passed!${OFF}"

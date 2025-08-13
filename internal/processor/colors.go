@@ -10,7 +10,7 @@ import (
 // FormatDockerPin formats a Docker image pin message with granular coloring
 func FormatDockerPin(fileType, serviceName, originalImage, pinnedImage string) {
 	// Parse the original image to separate name and tag
-	imageName, imageTag := parseImageNameAndTag(originalImage)
+	imageName, imageTag := ParseImageNameAndTag(originalImage)
 
 	// Parse the pinned image to separate name and digest
 	pinnedName, pinnedDigest := parseImageNameAndDigest(pinnedImage)
@@ -59,8 +59,8 @@ func FormatActionPin(originalRef, pinnedRef string) {
 	}
 }
 
-// parseImageNameAndTag splits an image reference into name and tag
-func parseImageNameAndTag(image string) (name, tag string) {
+// ParseImageNameAndTag splits an image reference into name and tag
+func ParseImageNameAndTag(image string) (name, tag string) {
 	// Find the last colon that's not part of a digest
 	lastColon := -1
 	for i := len(image) - 1; i >= 0; i-- {

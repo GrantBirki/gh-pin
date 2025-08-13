@@ -89,21 +89,28 @@ func TestProcessorConfig(t *testing.T) {
 func TestComposeFile(t *testing.T) {
 	// Test ComposeFile struct creation and field access
 	cf := ComposeFile{
-		Services: map[string]struct {
-			Image string `yaml:"image"`
-		}{
-			"web": {Image: "nginx:latest"},
-			"db":  {Image: "postgres:13"},
+		"services": map[string]interface{}{
+			"web": map[string]interface{}{
+				"image": "nginx:latest",
+			},
+			"db": map[string]interface{}{
+				"image": "postgres:13",
+			},
 		},
 	}
 
-	if len(cf.Services) != 2 {
-		t.Errorf("Expected 2 services, got %d", len(cf.Services))
+	services := cf["services"].(map[string]interface{})
+	if len(services) != 2 {
+		t.Errorf("Expected 2 services, got %d", len(services))
 	}
-	if cf.Services["web"].Image != "nginx:latest" {
-		t.Errorf("Expected web service image to be 'nginx:latest', got %v", cf.Services["web"].Image)
+
+	webService := services["web"].(map[string]interface{})
+	if webService["image"] != "nginx:latest" {
+		t.Errorf("Expected web service image to be 'nginx:latest', got %v", webService["image"])
 	}
-	if cf.Services["db"].Image != "postgres:13" {
-		t.Errorf("Expected db service image to be 'postgres:13', got %v", cf.Services["db"].Image)
+
+	dbService := services["db"].(map[string]interface{})
+	if dbService["image"] != "postgres:13" {
+		t.Errorf("Expected db service image to be 'postgres:13', got %v", dbService["image"])
 	}
 }

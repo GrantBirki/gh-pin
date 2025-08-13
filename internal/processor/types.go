@@ -2,12 +2,8 @@ package processor
 
 import "os"
 
-// ComposeFile is a minimal representation of a docker-compose YAML
-type ComposeFile struct {
-	Services map[string]struct {
-		Image string `yaml:"image"`
-	} `yaml:"services"`
-}
+// ComposeFile is a flexible representation of a docker-compose YAML that preserves all fields
+type ComposeFile map[string]interface{}
 
 // ProcessorConfig holds configuration for the processor
 type ProcessorConfig struct {
@@ -18,6 +14,7 @@ type ProcessorConfig struct {
 	ExpandRegistry bool
 	ForceMode      string         // "docker", "actions", or "" for auto-detection
 	Quiet          bool           // suppress informational messages when no changes are needed
+	Platform       string         // platform-specific manifest digest (e.g., linux/amd64, linux/arm/v7)
 	GitHubResolver GitHubResolver // resolver for GitHub API calls (injected for testing)
 }
 

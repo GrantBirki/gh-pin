@@ -53,8 +53,12 @@ func detectFileType(path string, data []byte, config processor.ProcessorConfig) 
 	if config.ForceMode == "docker" {
 		// Only allow docker-related types
 		var cf processor.ComposeFile
-		if err := yaml.Unmarshal(data, &cf); err == nil && len(cf.Services) > 0 {
-			return "compose"
+		if err := yaml.Unmarshal(data, &cf); err == nil {
+			if services, exists := cf["services"]; exists {
+				if servicesMap, ok := services.(map[string]interface{}); ok && len(servicesMap) > 0 {
+					return "compose"
+				}
+			}
 		}
 		return "unknown"
 	}
@@ -84,8 +88,12 @@ func detectFileType(path string, data []byte, config processor.ProcessorConfig) 
 
 	// Check if it's a Docker Compose file by structure
 	var cf processor.ComposeFile
-	if err := yaml.Unmarshal(data, &cf); err == nil && len(cf.Services) > 0 {
-		return "compose"
+	if err := yaml.Unmarshal(data, &cf); err == nil {
+		if services, exists := cf["services"]; exists {
+			if servicesMap, ok := services.(map[string]interface{}); ok && len(servicesMap) > 0 {
+				return "compose"
+			}
+		}
 	}
 
 	// Check if it contains GitHub Actions workflow structure
