@@ -4,12 +4,9 @@ import (
 	"bufio"
 	"bytes"
 	"fmt"
-	"os"
 	"regexp"
-	"strings"
 
 	"github.com/cli/go-gh/v2/pkg/api"
-	"github.com/fatih/color"
 	"github.com/regclient/regclient"
 )
 
@@ -29,11 +26,13 @@ var actionRefPattern = regexp.MustCompile(`^([^/]+)/([^@]+)@(.+)$`)
 
 // ProcessActions updates GitHub Actions workflow files to pin action references to commit SHAs
 func ProcessActions(rc *regclient.RegClient, path string, config ProcessorConfig) error {
-	data, err := os.ReadFile(path)
-	if err != nil {
-		return err
-	}
+	return ProcessFileGeneric(path, config, func(data []byte, config ProcessorConfig) ([]byte, bool, error) {
+		return processActionsContent(rc, data, config)
+	})
+}
 
+// processActionsContent processes the content of a GitHub Actions workflow file
+func processActionsContent(rc *regclient.RegClient, data []byte, config ProcessorConfig) ([]byte, bool, error) {
 	var output bytes.Buffer
 	scanner := bufio.NewScanner(bytes.NewReader(data))
 	changed := false
@@ -55,7 +54,7 @@ func ProcessActions(rc *regclient.RegClient, path string, config ProcessorConfig
 			}
 
 			// Check for pin comment directive
-			pinRef := extractPinComment(suffix)
+			pinRef := ExtractPinComment(suffix)
 			if pinRef != "" {
 				actionRef = updateActionRefWithPinComment(actionRef, pinRef)
 			}
@@ -63,7 +62,7 @@ func ProcessActions(rc *regclient.RegClient, path string, config ProcessorConfig
 			// Parse the action reference
 			ref, err := parseActionRef(actionRef)
 			if err != nil {
-				color.Yellow("WARN: %v", err)
+				LogWarning("%v", err)
 				output.WriteString(line + "\n")
 				continue
 			}
@@ -77,7 +76,7 @@ func ProcessActions(rc *regclient.RegClient, path string, config ProcessorConfig
 			// Resolve the tag/ref to a commit SHA
 			sha, err := resolveActionToSHA(ref)
 			if err != nil {
-				color.Yellow("WARN: failed to resolve %s@%s: %v", ref.Owner+"/"+ref.Repo, ref.Ref, err)
+				LogWarning("failed to resolve %s@%s: %v", ref.Owner+"/"+ref.Repo, ref.Ref, err)
 				output.WriteString(line + "\n")
 				continue
 			}
@@ -100,14 +99,10 @@ func ProcessActions(rc *regclient.RegClient, path string, config ProcessorConfig
 	}
 
 	if err := scanner.Err(); err != nil {
-		return err
+		return nil, false, err
 	}
 
-	if changed && !config.DryRun {
-		return os.WriteFile(path, output.Bytes(), getFileMode(path))
-	}
-
-	return nil
+	return output.Bytes(), changed, nil
 }
 
 // parseActionRef parses an action reference like "owner/repo@ref"
@@ -147,14 +142,9 @@ func isSHA(ref string) bool {
 }
 
 // extractPinComment extracts pin directive from comment like "# pin@v5"
+// DEPRECATED: Use ExtractPinComment from common.go instead
 func extractPinComment(suffix string) string {
-	// Look for pattern like "# pin@v5" or "# pin@v1.2.3"
-	pinPattern := regexp.MustCompile(`#\s*pin@([^\s]+)`)
-	match := pinPattern.FindStringSubmatch(suffix)
-	if match != nil {
-		return match[1]
-	}
-	return ""
+	return ExtractPinComment(suffix)
 }
 
 // updateActionRefWithPinComment updates action ref based on pin comment
@@ -168,26 +158,7 @@ func updateActionRefWithPinComment(actionRef, pinRef string) string {
 
 // updateSuffixWithPinComment adds or updates the pin comment in the suffix
 func updateSuffixWithPinComment(suffix, originalRef string) string {
-	// If there's already a pin comment, don't add another
-	if extractPinComment(suffix) != "" {
-		return suffix
-	}
-
-	// Add pin comment
-	if strings.TrimSpace(suffix) == "" {
-		// For empty or whitespace-only suffix, append pin comment
-		return suffix + " # pin@" + originalRef
-	}
-
-	// Insert pin comment before existing comment
-	if strings.Contains(suffix, "#") {
-		commentStart := strings.Index(suffix, "#")
-		before := suffix[:commentStart]
-		after := suffix[commentStart:]
-		return before + "# pin@" + originalRef + " " + after
-	}
-
-	return suffix + " # pin@" + originalRef
+	return UpdateCommentWithPin(suffix, originalRef)
 }
 
 // resolveActionToSHA resolves a GitHub action tag/ref to a commit SHA using GitHub CLI's REST client
@@ -221,12 +192,8 @@ func FormatActionPinMessage(originalRef, pinnedRef string) {
 	pinnedParsed, _ := parseActionRef(pinnedRef)
 
 	if origParsed != nil && pinnedParsed != nil {
-		fmt.Printf("📌 [%s] %s@%s → %s@%s\n",
-			color.BlueString("ACTIONS"),
-			color.WhiteString(origParsed.Owner+"/"+origParsed.Repo),
-			color.CyanString(origParsed.Ref),
-			color.WhiteString(pinnedParsed.Owner+"/"+pinnedParsed.Repo),
-			color.CyanString(pinnedParsed.Ref[:8]+"..."), // Show abbreviated SHA
-		)
+		originalDisplay := origParsed.Owner + "/" + origParsed.Repo + "@" + origParsed.Ref
+		pinnedDisplay := pinnedParsed.Owner + "/" + pinnedParsed.Repo + "@" + pinnedParsed.Ref[:8] + "..."
+		FormatReferenceMessage("ACTIONS", "", originalDisplay, pinnedDisplay)
 	}
 }
