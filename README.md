@@ -107,7 +107,7 @@ gh pin --dry-run
 
 ```bash
 # Without --expand-registry (default):
-# ubuntu:latest → ubuntu@sha256:abc123...
+# ubuntu:latest → ubuntu:latest@sha256:abc123...
 
 # With --expand-registry:
 # ubuntu:latest → docker.io/library/ubuntu:latest@sha256:abc123...
@@ -154,7 +154,7 @@ The `--platform` flag allows you to pin images to platform-specific manifest dig
 ```bash
 # Pins to the multi-platform index digest
 gh pin Dockerfile
-# Result: FROM nginx@sha256:abc123... # pin@nginx:latest
+# Result: FROM nginx:latest@sha256:abc123...
 ```
 
 **Platform-Specific Manifest Digests:**
@@ -174,7 +174,7 @@ gh pin --platform=linux/amd64 Dockerfile
 - You want maximum compatibility across different architectures
 - Your build system automatically selects the correct platform
 - You're building multi-platform images that should work everywhere
-- You want human-readable comments showing the original tag
+- You want to maintain flexibility for different deployment environments
 
 **Use Platform-Specific Digests (`--platform`) when:**
 
@@ -222,8 +222,7 @@ gh pin --platform=invalid/platform Dockerfile
 |--------|------------------------|--------------------------|
 | **Compatibility** | Works across all supported platforms | Works only on specified platform |
 | **Build Reproducibility** | Good (platform selected at runtime) | Excellent (exact binary artifacts) |
-| **Output Format** | `image@sha256:hash # pin@tag` | `image:tag@sha256:hash` |
-| **Comments** | Shows human-readable original tag | Clean format, no comments |
+| **Output Format** | `image:tag@sha256:hash` | `image:tag@sha256:hash` |
 | **Use Case** | General development, CI/CD | Specific deployments, debugging, hardened CI/CD environment |
 | **Fallback** | N/A | Falls back to index if platform unavailable |
 
@@ -241,34 +240,30 @@ gh pin --mode=actions
 
 ### Output Examples
 
-**Default behavior (index digests with human-readable comments):**
-
 ```bash
 $ gh pin --dry-run
-📌 [DOCKERFILE] ubuntu:latest → ubuntu@sha256:7c06e91f61fa88c08cc74f7e1b7c69ae24910d745357e0dfe1d2c0322aaf20f9 # pin@ubuntu:latest
-📌 [COMPOSE] nginx:alpine → nginx@sha256:2d194b9da5f3b2f19d8b03b48d36c3f8af53e24b96b8c48a82db8d7b6e6e4c6a # pin@nginx:alpine
-📌 [ACTIONS] actions/checkout@v5 → actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8
+📌 [DOCKERFILE] ubuntu:latest → ubuntu:latest@sha256:7c06e91f61fa88c08cc74f7e1b7c69ae24910d745357e0dfe1d2c0322aaf20f9
+📌 [COMPOSE] nginx:alpine → nginx:alpine@sha256:2d194b9da5f3b2f19d8b03b48d36c3f8af53e24b96b8c48a82db8d7b6e6e4c6a
+📌 [ACTIONS] actions/checkout@v5 → actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8 # pin@v5
 ```
-
-**Platform-specific behavior (clean format, no comments):**
 
 ```bash
 $ gh pin --platform=linux/amd64 --dry-run
 📌 [DOCKERFILE] ubuntu:latest → ubuntu:latest@sha256:1b8d8ff4777f36f19bfe73ee4df61e3a0b789caeff29caa019539ec7c9a57f95
 📌 [COMPOSE] nginx:alpine → nginx:alpine@sha256:a97eb9ecc708c8aa715ddc4b375e7c130bd32e0bce17c74b4f8c3a90e8338e14
-📌 [ACTIONS] actions/checkout@v5 → actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8
+📌 [ACTIONS] actions/checkout@v5 → actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8 # pin@v5
 ```
 
 #### What Gets Written to Files
 
-**Index Digests (Default):** Files are updated with **both the digest and human-readable comments**:
+**Both Index and Platform-Specific Digests:** Files are updated with the following format:
 
 ```dockerfile
 # Dockerfile - BEFORE
 FROM ubuntu:latest
 
 # Dockerfile - AFTER  
-FROM ubuntu@sha256:7c06e91f61fa88c08cc74f7e1b7c69ae24910d745357e0dfe1d2c0322aaf20f9 # pin@ubuntu:latest
+FROM ubuntu:latest@sha256:7c06e91f61fa88c08cc74f7e1b7c69ae24910d745357e0dfe1d2c0322aaf20f9
 ```
 
 ```yaml
@@ -280,32 +275,8 @@ services:
 # docker-compose.yml - AFTER
 services:
   web:
-    image: nginx@sha256:2d194b9da5f3b2f19d8b03b48d36c3f8af53e24b96b8c48a82db8d7b6e6e4c6a # pin@nginx:alpine
+    image: nginx:alpine@sha256:2d194b9da5f3b2f19d8b03b48d36c3f8af53e24b96b8c48a82db8d7b6e6e4c6a
 ```
-
-**Platform-Specific Digests:** Files are updated with **clean format only** (no comments):
-
-```dockerfile  
-# Dockerfile - BEFORE
-FROM ubuntu:latest
-
-# Dockerfile - AFTER
-FROM ubuntu:latest@sha256:1b8d8ff4777f36f19bfe73ee4df61e3a0b789caeff29caa019539ec7c9a57f95
-```
-
-```yaml
-# docker-compose.yml - BEFORE  
-services:
-  web:
-    image: nginx:alpine
-
-# docker-compose.yml - AFTER
-services:
-  web:
-    image: nginx:alpine@sha256:a97eb9ecc708c8aa715ddc4b375e7c130bd32e0bce17c74b4f8c3a90e8338e14
-```
-
-> **Note:** Comments are only added when no existing comments are present on the line. If you already have comments, they will be preserved unchanged.
 
 ### Exit Codes
 
@@ -336,8 +307,9 @@ The `gh-pin` CLI scans your project files and replaces mutable references with i
    - Retrieves digest/SHA that uniquely identifies the version
 
 4. **File Updates**: Replaces mutable references with immutable ones while preserving file structure:
-   - **Index digests**: Updates with digest + human-readable comment to preserve image context (e.g., `nginx@sha256:abc123 # pin@nginx:alpine`)
-   - **Platform-specific digests**: Updates with clean format only (e.g., `nginx:alpine@sha256:def456`)
+   - **Clean format**: Updates with tag@digest format (e.g., `nginx:alpine@sha256:abc123`) for all images
+   - **Docker compatible**: Uses valid Docker syntax that works in all contexts
+   - **Human readable**: Preserves original tag information in the reference
    - **Existing comments**: Preserved unchanged when already present
    - **File formatting**: Original indentation, order, and structure maintained
 

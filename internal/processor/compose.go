@@ -3,7 +3,6 @@ package processor
 import (
 	"bufio"
 	"bytes"
-	"fmt"
 	"regexp"
 
 	"github.com/goccy/go-yaml"
@@ -45,37 +44,19 @@ func processComposeContent(rc *regclient.RegClient, data []byte, config Processo
 			suffix := match[3]   // " # some comment" or empty
 
 			if !hasDigest(imageRef, config.Algorithm) {
-				// Get pinned image - for compose files, we'll use the clean digest format
-				pinned, err := PinImageWithComment(rc, imageRef, config, false)
+				// Get pinned image using clean tag@digest format
+				pinned, err := PinImage(rc, imageRef, config)
 				if err != nil {
 					LogWarning("%v", err)
 					output.WriteString(line + "\n")
 					continue
 				}
 				if pinned != "" {
-					// For console display
-					displayVersion := pinned
-					if config.Platform == "" {
-						// Only add comment for index digests, not platform-specific manifests
-						imageName, imageTag := ParseImageNameAndTag(imageRef)
-						if imageTag != "" {
-							displayVersion += fmt.Sprintf(" # pin@%s:%s", imageName, imageTag)
-						}
-					}
-					FormatDockerPin("COMPOSE", "", imageRef, displayVersion)
-
-					// For file content: add comment to pinned version unless suffix already has comments
-					fileVersion := pinned
-					if config.Platform == "" && suffix == "" {
-						// Only add comment for index digests and when no existing comment
-						imageName, imageTag := ParseImageNameAndTag(imageRef)
-						if imageTag != "" {
-							fileVersion += fmt.Sprintf(" # pin@%s:%s", imageName, imageTag)
-						}
-					}
+					// Use clean format for both console display and file content
+					FormatDockerPin("COMPOSE", "", imageRef, pinned)
 
 					// Preserve the original line structure, only replacing the image reference
-					newLine := prefix + fileVersion + suffix
+					newLine := prefix + pinned + suffix
 					output.WriteString(newLine + "\n")
 					changed = true
 					continue
