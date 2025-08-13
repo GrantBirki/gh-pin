@@ -18,7 +18,7 @@ This project is a [`gh cli`](https://github.com/cli/cli) extension that is used 
 
 Container images referenced by mutable tags (like `latest` or `v1.0`) and GitHub Actions referenced by mutable tags (like `v4` or `main`) can change over time, leading to inconsistent builds and potential security vulnerabilities. When a tag is updated to point to a new version, your builds may suddenly start using different dependencies or even malicious content without your knowledge.
 
-The `gh pin` tool solves this by automatically converting mutable references to immutable digest references. Instead of `ubuntu:latest`, your files will reference `ubuntu@sha256:abc123...`, and instead of `actions/checkout@v5`, your workflows will reference `actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8`. This ensures that the exact same versions are used every time. This approach follows security best practices recommended by organizations like the [CNCF](https://www.cncf.io/online-programs/cloud-native-live-automate-pinning-github-actions-and-container-images-to-their-digests/) and [SLSA](https://slsa.dev/) for supply chain security.
+The `gh pin` tool solves this by automatically converting mutable references to immutable digest references. Instead of `ubuntu:latest`, your files will reference `ubuntu@sha256:abc123...`, and instead of `actions/checkout@v5`, your workflows will reference `actions/checkout@sha123abc`. This ensures that the exact same versions are used every time. This approach follows security best practices recommended by organizations like the [CNCF](https://www.cncf.io/online-programs/cloud-native-live-automate-pinning-github-actions-and-container-images-to-their-digests/) and [SLSA](https://slsa.dev/) for supply chain security.
 
 All updated pins (Dependabot + Actions) will work out of the box with Dependabot!
 
@@ -67,6 +67,8 @@ Pin all Docker images and GitHub Actions in the current directory and subdirecto
 ```bash
 gh pin .
 ```
+
+> Note: The `gh pin` command works best when you run it from the root of your repository when using `gh pin .`
 
 Pin all images and actions in a specific directory and its subdirectories:
 
