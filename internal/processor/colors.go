@@ -7,18 +7,8 @@ import (
 	"github.com/fatih/color"
 )
 
-// FormatPinMessage formats a pin message with colored components
-func FormatPinMessage(fileType, originalImage, pinnedImage string) {
-	formatPinMessageWithService(fileType, "", originalImage, pinnedImage)
-}
-
-// FormatPinMessageWithService formats a pin message with colored components and service name
-func FormatPinMessageWithService(fileType, serviceName, originalImage, pinnedImage string) {
-	formatPinMessageWithService(fileType, serviceName, originalImage, pinnedImage)
-}
-
-// formatPinMessageWithService is the internal implementation
-func formatPinMessageWithService(fileType, serviceName, originalImage, pinnedImage string) {
+// FormatDockerPin formats a Docker image pin message with granular coloring
+func FormatDockerPin(fileType, serviceName, originalImage, pinnedImage string) {
 	// Parse the original image to separate name and tag
 	imageName, imageTag := parseImageNameAndTag(originalImage)
 
@@ -28,19 +18,43 @@ func formatPinMessageWithService(fileType, serviceName, originalImage, pinnedIma
 	if serviceName != "" {
 		fmt.Printf("📌 [%s] %s: %s:%s → %s@%s\n",
 			color.BlueString(fileType),
-			color.MagentaString(serviceName),
+			color.CyanString(serviceName),
 			color.WhiteString(imageName),
-			color.CyanString(imageTag),
+			color.GreenString(imageTag),
 			color.WhiteString(pinnedName),
-			color.CyanString(pinnedDigest),
+			color.GreenString(pinnedDigest),
 		)
 	} else {
 		fmt.Printf("📌 [%s] %s:%s → %s@%s\n",
 			color.BlueString(fileType),
 			color.WhiteString(imageName),
-			color.CyanString(imageTag),
+			color.GreenString(imageTag),
 			color.WhiteString(pinnedName),
-			color.CyanString(pinnedDigest),
+			color.GreenString(pinnedDigest),
+		)
+	}
+}
+
+// FormatActionPin formats a GitHub Action pin message with granular coloring
+func FormatActionPin(originalRef, pinnedRef string) {
+	// Parse original reference
+	origParsed, _ := parseActionRef(originalRef)
+	pinnedParsed, _ := parseActionRef(pinnedRef)
+
+	if origParsed != nil && pinnedParsed != nil {
+		// Format: owner/repo@ref → owner/repo@sha
+		fmt.Printf("📌 [%s] %s%s%s%s%s → %s%s%s%s%s\n",
+			color.BlueString("ACTIONS"),
+			color.WhiteString(origParsed.Owner),
+			color.BlueString("/"),
+			color.WhiteString(origParsed.Repo),
+			color.BlueString("@"),
+			color.GreenString(origParsed.Ref),
+			color.WhiteString(pinnedParsed.Owner),
+			color.BlueString("/"),
+			color.WhiteString(pinnedParsed.Repo),
+			color.BlueString("@"),
+			color.GreenString(pinnedParsed.Ref),
 		)
 	}
 }

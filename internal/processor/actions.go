@@ -181,13 +181,5 @@ func resolveActionToSHA(ref *GitHubRef) (string, error) {
 
 // FormatActionPinMessage formats a pin message for GitHub Actions
 func FormatActionPinMessage(originalRef, pinnedRef string) {
-	// Parse original reference
-	origParsed, _ := parseActionRef(originalRef)
-	pinnedParsed, _ := parseActionRef(pinnedRef)
-
-	if origParsed != nil && pinnedParsed != nil {
-		originalDisplay := origParsed.Owner + "/" + origParsed.Repo + "@" + origParsed.Ref
-		pinnedDisplay := pinnedParsed.Owner + "/" + pinnedParsed.Repo + "@" + pinnedParsed.Ref[:8] + "..."
-		FormatReferenceMessage("ACTIONS", "", originalDisplay, pinnedDisplay)
-	}
+	FormatActionPin(originalRef, pinnedRef)
 }

@@ -1,7 +1,6 @@
 package processor
 
 import (
-	"fmt"
 	"os"
 	"regexp"
 
@@ -71,22 +70,4 @@ func UpdateCommentWithPin(text, originalRef string) string {
 	}
 
 	return text + " # pin@" + originalRef
-}
-
-// FormatReferenceMessage provides unified formatting for pinning messages
-func FormatReferenceMessage(fileType, serviceName, originalRef, pinnedRef string) {
-	if serviceName != "" {
-		fmt.Printf("📌 [%s] %s: %s → %s\n",
-			color.BlueString(fileType),
-			color.MagentaString(serviceName),
-			color.WhiteString(originalRef),
-			color.CyanString(pinnedRef),
-		)
-	} else {
-		fmt.Printf("📌 [%s] %s → %s\n",
-			color.BlueString(fileType),
-			color.WhiteString(originalRef),
-			color.CyanString(pinnedRef),
-		)
-	}
 }

@@ -33,12 +33,14 @@ func processDockerfileContent(rc *regclient.RegClient, data []byte, config Proce
 					output.WriteString(line + "\n")
 					continue
 				}
-				FormatPinMessage("DOCKERFILE", parts[1], pinned)
-				// Preserve indentation if any
-				indent := strings.Repeat(" ", len(line)-len(strings.TrimLeft(line, " ")))
-				output.WriteString(indent + "FROM " + pinned + "\n")
-				changed = true
-				continue
+				if pinned != "" {
+					FormatDockerPin("DOCKERFILE", "", parts[1], pinned)
+					// Preserve indentation if any
+					indent := strings.Repeat(" ", len(line)-len(strings.TrimLeft(line, " ")))
+					output.WriteString(indent + "FROM " + pinned + "\n")
+					changed = true
+					continue
+				}
 			}
 		}
 		output.WriteString(line + "\n")

@@ -27,8 +27,8 @@ func processComposeContent(rc *regclient.RegClient, data []byte, config Processo
 				LogWarning("%v", err)
 				continue
 			}
-			if pinned != def.Image {
-				FormatPinMessageWithService("COMPOSE", svc, def.Image, pinned)
+			if pinned != "" {
+				FormatDockerPin("COMPOSE", svc, def.Image, pinned)
 				cf.Services[svc] = struct {
 					Image string `yaml:"image"`
 				}{Image: pinned}
