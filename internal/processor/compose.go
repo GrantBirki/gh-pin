@@ -20,21 +20,34 @@ func processComposeContent(rc *regclient.RegClient, data []byte, config Processo
 	}
 
 	changed := false
+	var pinnedImages []string
+	var serviceNames []string
+
 	for svc, def := range cf.Services {
-		if def.Image != "" && !hasDigest(def.Image, config.Algorithm) {
-			pinned, err := PinImage(rc, def.Image, config)
-			if err != nil {
-				LogWarning("%v", err)
-				continue
-			}
-			if pinned != "" {
-				FormatDockerPin("COMPOSE", svc, def.Image, pinned)
-				cf.Services[svc] = struct {
-					Image string `yaml:"image"`
-				}{Image: pinned}
-				changed = true
+		if def.Image != "" {
+			if !hasDigest(def.Image, config.Algorithm) {
+				pinned, err := PinImage(rc, def.Image, config)
+				if err != nil {
+					LogWarning("%v", err)
+					continue
+				}
+				if pinned != "" {
+					FormatDockerPin("COMPOSE", svc, def.Image, pinned)
+					cf.Services[svc] = struct {
+						Image string `yaml:"image"`
+					}{Image: pinned}
+					changed = true
+				}
+			} else {
+				pinnedImages = append(pinnedImages, def.Image)
+				serviceNames = append(serviceNames, svc)
 			}
 		}
+	}
+
+	// If no changes were made, provide detailed feedback about what's already pinned
+	if !changed && len(pinnedImages) > 0 && !config.Quiet {
+		FormatAlreadyPinnedDockerMessage("COMPOSE", pinnedImages, serviceNames)
 	}
 
 	if changed {

@@ -8,6 +8,35 @@ import (
 	"github.com/regclient/regclient"
 )
 
+// MockGitHubResolver is a mock implementation of GitHubResolver for testing
+type MockGitHubResolver struct {
+	responses map[string]string // map of "owner/repo@ref" to SHA
+}
+
+// ResolveActionToSHA returns a mock SHA for testing
+func (m *MockGitHubResolver) ResolveActionToSHA(ref *GitHubRef) (string, error) {
+	key := ref.Owner + "/" + ref.Repo + "@" + ref.Ref
+	if sha, exists := m.responses[key]; exists {
+		return sha, nil
+	}
+	// Return a default mock SHA if not found in responses map
+	return "abcdef1234567890123456789012345678901234", nil
+}
+
+// NewMockGitHubResolver creates a new mock resolver with default responses
+func NewMockGitHubResolver() *MockGitHubResolver {
+	return &MockGitHubResolver{
+		responses: map[string]string{
+			"actions/checkout@v4": "08eba0b27e820071cde6df949e0beb9ba4906955",
+			"actions/checkout@v5": "08c6903cd8c0fde910a37f88322edcfb5dd907a8",
+			"actions/setup-go@v4": "93397bea11091df50f3d7e59dc26a7711a8bcfbe",
+			"actions/setup-go@v5": "d35c59abb061a4a6fb18e82ac0862c26744d6ab5",
+			"actions/cache@v3":    "88522ab9f39a2ea568f7027eddc7d8d8bc9d59c8",
+			"actions/cache@v4":    "0400d5f644dc74513175e3cd8d07132dd4860809",
+		},
+	}
+}
+
 func TestParseActionRef(t *testing.T) {
 	tests := []struct {
 		name      string
@@ -270,7 +299,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-go@v5`,
-			config: ProcessorConfig{DryRun: true},
+			config: ProcessorConfig{DryRun: true, GitHubResolver: NewMockGitHubResolver()},
 		},
 		{
 			name: "already pinned actions",
@@ -282,7 +311,7 @@ jobs:
     steps:
       - uses: actions/checkout@692973e3d937129bcbf40652eb9f2f61becf3332
       - uses: actions/setup-go@v5`,
-			config: ProcessorConfig{DryRun: true},
+			config: ProcessorConfig{DryRun: true, GitHubResolver: NewMockGitHubResolver()},
 		},
 		{
 			name: "action with pin comment",
@@ -294,14 +323,14 @@ jobs:
     steps:
       - uses: actions/checkout@v3 # pin@v4
       - uses: actions/setup-go@v5`,
-			config: ProcessorConfig{DryRun: true},
+			config: ProcessorConfig{DryRun: true, GitHubResolver: NewMockGitHubResolver()},
 		},
 		{
 			name: "no actions workflow",
 			content: `# This is not a workflow file
 some: other
 yaml: content`,
-			config: ProcessorConfig{DryRun: true},
+			config: ProcessorConfig{DryRun: true, GitHubResolver: NewMockGitHubResolver()},
 		},
 	}
 

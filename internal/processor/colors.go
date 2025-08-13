@@ -103,3 +103,114 @@ func parseImageNameAndDigest(image string) (name, digest string) {
 
 	return image[:atIndex], image[atIndex+1:]
 }
+
+// FormatAlreadyPinnedMessage formats a message when all references are already pinned
+func FormatAlreadyPinnedMessage(fileType string, count int) {
+	if count == 0 {
+		fmt.Printf("ℹ️  [%s] No %s references found\n",
+			color.BlueString(fileType),
+			strings.ToLower(fileType),
+		)
+	} else {
+		referenceType := "image"
+		if fileType == "ACTIONS" {
+			referenceType = "action"
+		}
+
+		plural := ""
+		if count != 1 {
+			plural = "s"
+		}
+
+		fmt.Printf("ℹ️  [%s] All %d %s%s already pinned\n",
+			color.BlueString(fileType),
+			count,
+			referenceType,
+			plural,
+		)
+	}
+}
+
+// FormatAlreadyPinnedActionsMessage formats a detailed message showing already pinned actions
+func FormatAlreadyPinnedActionsMessage(pinnedActions []string) {
+	if len(pinnedActions) == 0 {
+		fmt.Printf("ℹ️  [%s] No actions references found\n",
+			color.BlueString("ACTIONS"),
+		)
+		return
+	}
+
+	// Determine singular/plural
+	actionWord := "action"
+	verbForm := "is"
+	if len(pinnedActions) > 1 {
+		actionWord = "actions"
+		verbForm = "are"
+	}
+
+	fmt.Printf("ℹ️  [%s] %d %s %s already pinned:\n",
+		color.BlueString("ACTIONS"),
+		len(pinnedActions),
+		actionWord,
+		verbForm,
+	)
+
+	for _, action := range pinnedActions {
+		ref, err := parseActionRef(action)
+		if err == nil {
+			fmt.Printf("   • %s%s%s%s%s\n",
+				color.WhiteString(ref.Owner),
+				color.BlueString("/"),
+				color.WhiteString(ref.Repo),
+				color.BlueString("@"),
+				color.GreenString(ref.Ref),
+			)
+		} else {
+			fmt.Printf("   • %s\n", color.WhiteString(action))
+		}
+	}
+}
+
+// FormatAlreadyPinnedDockerMessage formats a detailed message showing already pinned Docker images
+func FormatAlreadyPinnedDockerMessage(fileType string, pinnedImages []string, serviceNames []string) {
+	if len(pinnedImages) == 0 {
+		fmt.Printf("ℹ️  [%s] No image references found\n",
+			color.BlueString(fileType),
+		)
+		return
+	}
+
+	// Determine singular/plural
+	imageWord := "image"
+	verbForm := "is"
+	if len(pinnedImages) > 1 {
+		imageWord = "images"
+		verbForm = "are"
+	}
+
+	fmt.Printf("ℹ️  [%s] %d %s %s already pinned:\n",
+		color.BlueString(fileType),
+		len(pinnedImages),
+		imageWord,
+		verbForm,
+	)
+
+	for i, image := range pinnedImages {
+		imageName, imageDigest := parseImageNameAndDigest(image)
+
+		if fileType == "COMPOSE" && i < len(serviceNames) && serviceNames[i] != "" {
+			fmt.Printf("   • %s: %s%s%s\n",
+				color.CyanString(serviceNames[i]),
+				color.WhiteString(imageName),
+				color.BlueString("@"),
+				color.GreenString(imageDigest),
+			)
+		} else {
+			fmt.Printf("   • %s%s%s\n",
+				color.WhiteString(imageName),
+				color.BlueString("@"),
+				color.GreenString(imageDigest),
+			)
+		}
+	}
+}

@@ -22,6 +22,7 @@ var (
 	showVersion    = flag.Bool("version", false, "show version information")
 	algo           = flag.String("algo", "sha256", "digest algorithm to check for (sha256, sha512, etc.)")
 	forceMode      = flag.String("mode", "", "force processing mode: 'docker' for containers only, 'actions' for GitHub Actions only")
+	quiet          = flag.Bool("quiet", false, "suppress informational messages when no changes are needed")
 )
 
 func main() {
@@ -39,7 +40,7 @@ func main() {
 	}
 
 	if len(flag.Args()) == 0 {
-		fmt.Fprintf(os.Stderr, "Usage: %s [--version] [--dry-run] [--no-color] [--recursive=false] [--pervasive] [--expand-registry] [--algo=sha256] [--mode=docker|actions] <file|dir> [file|dir...]\n", os.Args[0])
+		fmt.Fprintf(os.Stderr, "Usage: %s [--version] [--dry-run] [--no-color] [--recursive=false] [--pervasive] [--expand-registry] [--algo=sha256] [--mode=docker|actions] [--quiet] <file|dir> [file|dir...]\n", os.Args[0])
 		fmt.Fprintf(os.Stderr, "\nSupported file types:\n")
 		fmt.Fprintf(os.Stderr, "  - Dockerfiles (FROM statements)\n")
 		fmt.Fprintf(os.Stderr, "  - Docker Compose files (image: fields)\n")
@@ -56,6 +57,8 @@ func main() {
 		Pervasive:      *pervasive,
 		ExpandRegistry: *expandRegistry,
 		ForceMode:      *forceMode,
+		Quiet:          *quiet,
+		GitHubResolver: &processor.DefaultGitHubResolver{},
 	}
 
 	rc := regclient.New()

@@ -20,6 +20,7 @@ func processDockerfileContent(rc *regclient.RegClient, data []byte, config Proce
 	var output bytes.Buffer
 	scanner := bufio.NewScanner(bytes.NewReader(data))
 	changed := false
+	var pinnedImages []string
 
 	for scanner.Scan() {
 		line := scanner.Text()
@@ -41,6 +42,8 @@ func processDockerfileContent(rc *regclient.RegClient, data []byte, config Proce
 					changed = true
 					continue
 				}
+			} else if len(parts) >= 2 && hasDigest(parts[1], config.Algorithm) {
+				pinnedImages = append(pinnedImages, parts[1])
 			}
 		}
 		output.WriteString(line + "\n")
@@ -48,6 +51,11 @@ func processDockerfileContent(rc *regclient.RegClient, data []byte, config Proce
 
 	if err := scanner.Err(); err != nil {
 		return nil, false, err
+	}
+
+	// If no changes were made, provide detailed feedback about what's already pinned
+	if !changed && len(pinnedImages) > 0 && !config.Quiet {
+		FormatAlreadyPinnedDockerMessage("DOCKERFILE", pinnedImages, nil)
 	}
 
 	return output.Bytes(), changed, nil

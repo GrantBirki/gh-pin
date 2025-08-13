@@ -97,7 +97,7 @@ mkdir -p "${TEMP_DIR}/algo-test"
 echo "FROM ubuntu@sha256:7c06e91f61fa88c08cc74f7e1b7c69ae24910d745357e0dfe1d2c0322aaf20f9" > "${TEMP_DIR}/algo-test/Dockerfile"
 
 # Test default behavior (should skip sha256-pinned image)
-output=$(go run -mod=vendor ./cmd/gh-pin --dry-run "${TEMP_DIR}/algo-test/Dockerfile" 2>&1 || true)
+output=$(go run -mod=vendor ./cmd/gh-pin --dry-run --quiet "${TEMP_DIR}/algo-test/Dockerfile" 2>&1 || true)
 if [[ -n "$output" ]]; then
     echo -e "${RED}❌ FAIL: Default algo=sha256 should skip already pinned images${OFF}"
     echo "Got output: $output"

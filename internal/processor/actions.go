@@ -10,6 +10,38 @@ import (
 	"github.com/regclient/regclient"
 )
 
+// GitHubResolver interface for resolving GitHub action references
+type GitHubResolver interface {
+	ResolveActionToSHA(ref *GitHubRef) (string, error)
+}
+
+// DefaultGitHubResolver implements GitHubResolver using the GitHub CLI
+type DefaultGitHubResolver struct{}
+
+// ResolveActionToSHA resolves a GitHub action tag/ref to a commit SHA using GitHub CLI's REST client
+func (r *DefaultGitHubResolver) ResolveActionToSHA(ref *GitHubRef) (string, error) {
+	// Create a REST client using the pre-hydrated GitHub CLI client
+	restClient, err := api.DefaultRESTClient()
+	if err != nil {
+		return "", fmt.Errorf("failed to create GitHub REST client: %w", err)
+	}
+
+	// API endpoint path
+	path := fmt.Sprintf("repos/%s/%s/commits/%s", ref.Owner, ref.Repo, ref.Ref)
+
+	var commit struct {
+		SHA string `json:"sha"`
+	}
+
+	// Make the API call using the GitHub CLI's REST client
+	err = restClient.Get(path, &commit)
+	if err != nil {
+		return "", fmt.Errorf("failed to resolve %s/%s@%s: %w", ref.Owner, ref.Repo, ref.Ref, err)
+	}
+
+	return commit.SHA, nil
+}
+
 // GitHubRef represents a GitHub repository reference
 type GitHubRef struct {
 	Owner string
@@ -19,7 +51,7 @@ type GitHubRef struct {
 }
 
 // usesPattern matches GitHub Actions 'uses:' statements
-var usesPattern = regexp.MustCompile(`^(\s*)(uses:\s*)([^\s#]+)(.*)$`)
+var usesPattern = regexp.MustCompile(`^(\s*)(-\s+)?(uses:\s*)([^\s#]+)(.*)$`)
 
 // actionRefPattern parses action references like "owner/repo@ref"
 var actionRefPattern = regexp.MustCompile(`^([^/]+)/([^@]+)@(.+)$`)
@@ -27,15 +59,16 @@ var actionRefPattern = regexp.MustCompile(`^([^/]+)/([^@]+)@(.+)$`)
 // ProcessActions updates GitHub Actions workflow files to pin action references to commit SHAs
 func ProcessActions(rc *regclient.RegClient, path string, config ProcessorConfig) error {
 	return ProcessFileGeneric(path, config, func(data []byte, config ProcessorConfig) ([]byte, bool, error) {
-		return processActionsContent(data)
+		return processActionsContent(data, config)
 	})
 }
 
 // processActionsContent processes the content of a GitHub Actions workflow file
-func processActionsContent(data []byte) ([]byte, bool, error) {
+func processActionsContent(data []byte, config ProcessorConfig) ([]byte, bool, error) {
 	var output bytes.Buffer
 	scanner := bufio.NewScanner(bytes.NewReader(data))
 	changed := false
+	var pinnedActions []string
 
 	for scanner.Scan() {
 		line := scanner.Text()
@@ -43,12 +76,14 @@ func processActionsContent(data []byte) ([]byte, bool, error) {
 		// Check if this line contains a uses: statement
 		if match := usesPattern.FindStringSubmatch(line); match != nil {
 			indent := match[1]
-			usesPrefix := match[2]
-			actionRef := match[3]
-			suffix := match[4] // includes any comments
+			dashPrefix := match[2] // could be empty or "- "
+			usesPrefix := match[3]
+			actionRef := match[4]
+			suffix := match[5] // includes any comments
 
 			// Check if action is already pinned to a SHA (40-char hex)
 			if isAlreadyPinnedToSHA(actionRef) {
+				pinnedActions = append(pinnedActions, actionRef)
 				output.WriteString(line + "\n")
 				continue
 			}
@@ -69,12 +104,20 @@ func processActionsContent(data []byte) ([]byte, bool, error) {
 
 			// Skip if already pinned to SHA
 			if isSHA(ref.Ref) {
+				pinnedActions = append(pinnedActions, actionRef)
 				output.WriteString(line + "\n")
 				continue
 			}
 
 			// Resolve the tag/ref to a commit SHA
-			sha, err := resolveActionToSHA(ref)
+			var sha string
+			if config.GitHubResolver != nil {
+				sha, err = config.GitHubResolver.ResolveActionToSHA(ref)
+			} else {
+				// Use default resolver if none is provided
+				defaultResolver := &DefaultGitHubResolver{}
+				sha, err = defaultResolver.ResolveActionToSHA(ref)
+			}
 			if err != nil {
 				LogWarning("failed to resolve %s@%s: %v", ref.Owner+"/"+ref.Repo, ref.Ref, err)
 				output.WriteString(line + "\n")
@@ -89,7 +132,7 @@ func processActionsContent(data []byte) ([]byte, bool, error) {
 
 			// Update the line with pinned reference, preserving indentation and comments
 			newSuffix := updateSuffixWithPinComment(suffix, ref.Ref)
-			newLine := indent + usesPrefix + pinnedRef + newSuffix
+			newLine := indent + dashPrefix + usesPrefix + pinnedRef + newSuffix
 			output.WriteString(newLine + "\n")
 			changed = true
 			continue
@@ -100,6 +143,11 @@ func processActionsContent(data []byte) ([]byte, bool, error) {
 
 	if err := scanner.Err(); err != nil {
 		return nil, false, err
+	}
+
+	// If no changes were made, provide detailed feedback about what's already pinned
+	if !changed && !config.Quiet {
+		FormatAlreadyPinnedActionsMessage(pinnedActions)
 	}
 
 	return output.Bytes(), changed, nil
@@ -153,30 +201,6 @@ func updateActionRefWithPinComment(actionRef, pinRef string) string {
 // updateSuffixWithPinComment adds or updates the pin comment in the suffix
 func updateSuffixWithPinComment(suffix, originalRef string) string {
 	return UpdateCommentWithPin(suffix, originalRef)
-}
-
-// resolveActionToSHA resolves a GitHub action tag/ref to a commit SHA using GitHub CLI's REST client
-func resolveActionToSHA(ref *GitHubRef) (string, error) {
-	// Create a REST client using the pre-hydrated GitHub CLI client
-	restClient, err := api.DefaultRESTClient()
-	if err != nil {
-		return "", fmt.Errorf("failed to create GitHub REST client: %w", err)
-	}
-
-	// API endpoint path
-	path := fmt.Sprintf("repos/%s/%s/commits/%s", ref.Owner, ref.Repo, ref.Ref)
-
-	var commit struct {
-		SHA string `json:"sha"`
-	}
-
-	// Make the API call using the GitHub CLI's REST client
-	err = restClient.Get(path, &commit)
-	if err != nil {
-		return "", fmt.Errorf("failed to resolve %s/%s@%s: %w", ref.Owner, ref.Repo, ref.Ref, err)
-	}
-
-	return commit.SHA, nil
 }
 
 // FormatActionPinMessage formats a pin message for GitHub Actions

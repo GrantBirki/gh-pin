@@ -16,7 +16,9 @@ type ProcessorConfig struct {
 	NoColor        bool
 	Pervasive      bool
 	ExpandRegistry bool
-	ForceMode      string // "docker", "actions", or "" for auto-detection
+	ForceMode      string         // "docker", "actions", or "" for auto-detection
+	Quiet          bool           // suppress informational messages when no changes are needed
+	GitHubResolver GitHubResolver // resolver for GitHub API calls (injected for testing)
 }
 
 // getFileMode returns the file mode of the given path, defaulting to 0644 if unable to stat
