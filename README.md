@@ -13,11 +13,13 @@ Pin Docker container images and GitHub Actions to exact digests for better build
 
 ## About ⭐
 
-This project is a gh cli extension that is used to pin Docker container images and GitHub Actions to exact digests. This is useful for ensuring that builds are reproducible and secure.
+This project is a [`gh cli`](https://github.com/cli/cli) extension that is used to pin Docker container images and GitHub Actions to exact digests. This is useful for ensuring that builds are reproducible and secure.
 
 Container images referenced by mutable tags (like `latest` or `v1.0`) and GitHub Actions referenced by mutable tags (like `v4` or `main`) can change over time, leading to inconsistent builds and potential security vulnerabilities. When a tag is updated to point to a new version, your builds may suddenly start using different dependencies or even malicious content without your knowledge.
 
 The `gh pin` tool solves this by automatically converting mutable references to immutable digest references. Instead of `ubuntu:latest`, your files will reference `ubuntu@sha256:abc123...`, and instead of `actions/checkout@v5`, your workflows will reference `actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8`. This ensures that the exact same versions are used every time. This approach follows security best practices recommended by organizations like the [CNCF](https://www.cncf.io/online-programs/cloud-native-live-automate-pinning-github-actions-and-container-images-to-their-digests/) and [SLSA](https://slsa.dev/) for supply chain security.
+
+All updated pins (Dependabot + Actions) will work out of the box with Dependabot!
 
 > Moving towards immutable image references lives in the same ecosystem as [Hermetic Builds](https://software.birki.io/posts/hermetic-builds/) which is a topic I am passionate about and a key reason for building this CLI.
 
@@ -186,6 +188,27 @@ The `gh-pin` CLI scans your project files and replaces mutable references with i
 - **Efficiency**: Uses HEAD requests to minimize network bandwidth
 - **Compatibility**: Works with all OCI-compatible registries and GitHub Actions
 - **Comment Support**: Supports `# pin@v5` style comments for explicit version control
+
+## Prior Art, Inspiration, and Alternatives
+
+- [mheap/pin-github-action](https://github.com/mheap/pin-github-action)
+- Follow a guide like this from [Step Security](https://www.stepsecurity.io/blog/pinning-github-actions-for-enhanced-security-a-complete-guide) and manually update Actions pins then use dependabot
+
+You can pull Docker digests manually by pulling down the entire image (can be slow) like this:
+
+```bash
+TAG="postgres:15"
+docker pull "$TAG"
+DIGEST=$(docker inspect --format='{{index .RepoDigests 0}}' "$TAG")
+echo "$TAG -> $DIGEST"
+```
+
+You could also do something like this and manually edit your Docker / Docker-Compose files:
+
+```bash
+regctl image digest postgres:15
+# outputs: sha256:9b2a...
+```
 
 ## Verifying Release Binaries 🔏
 
