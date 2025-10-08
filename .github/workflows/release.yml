@@ -24,7 +24,7 @@ jobs:
           persist-credentials: false
 
       - name: setup go
-        uses: actions/setup-go@0aaccfd150d50ccaeb58ebd88d36e91967a5f35b # pin@v5
+        uses: actions/setup-go@c0137caad775660c0844396c52da96e560aba63d # pin@v5
         with:
           go-version-file: "go.mod"
           cache: false
@@ -60,7 +60,7 @@ jobs:
           path: "dist/"
 
       - name: attest build provenance
-        uses: actions/attest-build-provenance@v2.4.0
+        uses: actions/attest-build-provenance@v3.0.0
         with:
           subject-path: "dist/"
 
