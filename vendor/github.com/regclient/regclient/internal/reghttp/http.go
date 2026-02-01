@@ -36,9 +36,11 @@ import (
 	"github.com/regclient/regclient/types/warning"
 )
 
-var defaultDelayInit, _ = time.ParseDuration("0.1s")
-var defaultDelayMax, _ = time.ParseDuration("30s")
-var warnRegexp = regexp.MustCompile(`^299\s+-\s+"([^"]+)"`)
+var (
+	defaultDelayInit, _ = time.ParseDuration("0.1s")
+	defaultDelayMax, _  = time.ParseDuration("30s")
+	warnRegexp          = regexp.MustCompile(`^299\s+-\s+"([^"]+)"`)
+)
 
 const (
 	DefaultRetryLimit = 5 // number of times a request will be retried
@@ -324,9 +326,14 @@ func (resp *Resp) next() error {
 				if h.config.TLS == config.TLSDisabled {
 					u.Scheme = "http"
 				}
+				query := url.Values{}
 				if req.Query != nil {
-					u.RawQuery = req.Query.Encode()
+					query = req.Query
 				}
+				if h.config.Hostname != reqHost.config.Hostname {
+					query.Set("ns", reqHost.config.Hostname)
+				}
+				u.RawQuery = query.Encode()
 			}
 			// close previous response
 			if resp.resp != nil && resp.resp.Body != nil {
@@ -423,7 +430,6 @@ func (resp *Resp) next() error {
 			// send request
 			hc := h.getHTTPClient(req.Repository)
 			resp.resp, err = hc.Do(httpReq)
-
 			if err != nil {
 				c.slog.Debug("Request failed",
 					slog.String("URL", u.String()),
