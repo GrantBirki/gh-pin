@@ -55,6 +55,7 @@ type CredsFn func(host string) Cred
 // Else if user and password are provided, they are attempted with all auth methods.
 // Else if neither are provided and auth method is bearer, an anonymous login is attempted.
 type Cred struct {
+	//#nosec G117 exported struct intentionally holds secrets
 	User, Password string // clear text username and password
 	Token          string // refresh token only used for bearer auth
 }
@@ -69,7 +70,7 @@ type challenge struct {
 type handler interface {
 	AddScope(scope string) error
 	ProcessChallenge(challenge) error
-	GenerateAuth() (string, error)
+	UpdateRequest(*http.Request) error
 }
 
 // handlerBuild is used to make a new handler for a specific authType and URL
@@ -239,8 +240,8 @@ func (a *Auth) HandleResponse(resp *http.Response) error {
 			// handle race condition when another request updates the challenge
 			// detect that by seeing the current auth header is different
 			prevAH := resp.Request.Header.Get("Authorization")
-			ah, err := a.hs[host][c.authType].GenerateAuth()
-			if err == nil && prevAH != ah {
+			err := a.hs[host][c.authType].UpdateRequest(resp.Request)
+			if err == nil && prevAH != resp.Request.Header.Get("Authorization") {
 				goodChallenge = true
 			}
 		} else {
@@ -263,10 +264,9 @@ func (a *Auth) UpdateRequest(req *http.Request) error {
 		return nil
 	}
 	var err error
-	var ah string
 	for _, at := range a.authTypes {
 		if a.hs[host][at] != nil {
-			ah, err = a.hs[host][at].GenerateAuth()
+			err = a.hs[host][at].UpdateRequest(req)
 			if err != nil {
 				a.slog.Debug("Failed to generate auth",
 					slog.String("err", err.Error()),
@@ -274,7 +274,6 @@ func (a *Auth) UpdateRequest(req *http.Request) error {
 					slog.String("authtype", at))
 				continue
 			}
-			req.Header.Set("Authorization", ah)
 			break
 		}
 	}
@@ -480,14 +479,15 @@ func (b *basicHandler) ProcessChallenge(c challenge) error {
 	return errs.ErrNoNewChallenge
 }
 
-// GenerateAuth for BasicHandler generates base64 encoded user/pass for a host
-func (b *basicHandler) GenerateAuth() (string, error) {
+// UpdateRequest for BasicHandler generates base64 encoded user/pass for a host
+func (b *basicHandler) UpdateRequest(req *http.Request) error {
 	cred := b.credsFn(b.host)
 	if cred.User == "" || cred.Password == "" {
-		return "", fmt.Errorf("no credentials available: %w", errs.ErrHTTPUnauthorized)
+		return fmt.Errorf("no credentials available: %w", errs.ErrHTTPUnauthorized)
 	}
-	auth := base64.StdEncoding.EncodeToString([]byte(cred.User + ":" + cred.Password))
-	return fmt.Sprintf("Basic %s", auth), nil
+	req.Header.Set("Authorization", fmt.Sprintf("Basic %s",
+		base64.StdEncoding.EncodeToString([]byte(cred.User+":"+cred.Password))))
+	return nil
 }
 
 // bearerHandler supports Bearer auth type requests
@@ -498,6 +498,7 @@ type bearerHandler struct {
 	host           string
 	credsFn        CredsFn
 	scopes         []string
+	tokenURL       *url.URL
 	token          bearerToken
 	slog           *slog.Logger
 }
@@ -505,10 +506,10 @@ type bearerHandler struct {
 // bearerToken is the json response to the Bearer request
 type bearerToken struct {
 	Token        string    `json:"token"`
-	AccessToken  string    `json:"access_token"`
+	AccessToken  string    `json:"access_token"` //#nosec G117 exported struct intentionally holds secrets
 	ExpiresIn    int       `json:"expires_in"`
 	IssuedAt     time.Time `json:"issued_at"`
-	RefreshToken string    `json:"refresh_token"`
+	RefreshToken string    `json:"refresh_token"` //#nosec G117 exported struct intentionally holds secrets
 	Scope        string    `json:"scope"`
 }
 
@@ -628,31 +629,39 @@ func (b *bearerHandler) ProcessChallenge(c challenge) error {
 	return nil
 }
 
-// GenerateAuth for BasicHandler generates base64 encoded user/pass for a host
-func (b *bearerHandler) GenerateAuth() (string, error) {
+// UpdateRequest for BearerHandler adds a bearer token to the request.
+func (b *bearerHandler) UpdateRequest(req *http.Request) error {
+	// handle relative realm values
+	if b.tokenURL == nil {
+		u, err := req.URL.Parse(b.realm)
+		if err != nil {
+			return err
+		}
+		b.tokenURL = u
+	}
 	// if unexpired token already exists, return it
 	if b.token.Token != "" && !b.isExpired() {
-		return fmt.Sprintf("Bearer %s", b.token.Token), nil
+		req.Header.Set("Authorization", fmt.Sprintf("Bearer %s", b.token.Token))
+		return nil
 	}
-
 	// attempt to post if a refresh token is available or token auth is being used
 	cred := b.credsFn(b.host)
 	if b.token.RefreshToken != "" || cred.Token != "" {
 		if err := b.tryPost(cred); err == nil {
-			return fmt.Sprintf("Bearer %s", b.token.Token), nil
+			req.Header.Set("Authorization", fmt.Sprintf("Bearer %s", b.token.Token))
+			return nil
 		} else if err != errs.ErrHTTPUnauthorized {
-			return "", fmt.Errorf("failed to request auth token (post): %w%.0w", err, errs.ErrHTTPUnauthorized)
+			return fmt.Errorf("failed to request auth token (post): %w%.0w", err, errs.ErrHTTPUnauthorized)
 		}
 	}
-
 	// attempt a get (with basic auth if user/pass available)
 	if err := b.tryGet(cred); err == nil {
-		return fmt.Sprintf("Bearer %s", b.token.Token), nil
+		req.Header.Set("Authorization", fmt.Sprintf("Bearer %s", b.token.Token))
+		return nil
 	} else if err != errs.ErrHTTPUnauthorized {
-		return "", fmt.Errorf("failed to request auth token (get): %w%.0w", err, errs.ErrHTTPUnauthorized)
+		return fmt.Errorf("failed to request auth token (get): %w%.0w", err, errs.ErrHTTPUnauthorized)
 	}
-
-	return "", errs.ErrHTTPUnauthorized
+	return errs.ErrHTTPUnauthorized
 }
 
 // isExpired returns true when token issue date is either 0, token has expired,
@@ -668,7 +677,8 @@ func (b *bearerHandler) isExpired() bool {
 
 // tryGet requests a new token with a GET request
 func (b *bearerHandler) tryGet(cred Cred) error {
-	req, err := http.NewRequest("GET", b.realm, nil)
+	//#nosec G704 inputs follow specification
+	req, err := http.NewRequest("GET", b.tokenURL.String(), nil)
 	if err != nil {
 		return err
 	}
@@ -692,6 +702,7 @@ func (b *bearerHandler) tryGet(cred Cred) error {
 	req.Header.Add("User-Agent", b.clientID)
 	req.URL.RawQuery = reqParams.Encode()
 
+	//#nosec G704 inputs follow specification
 	resp, err := b.client.Do(req)
 	if err != nil {
 		return err
@@ -723,13 +734,15 @@ func (b *bearerHandler) tryPost(cred Cred) error {
 		form.Set("password", cred.Password)
 	}
 
-	req, err := http.NewRequest("POST", b.realm, strings.NewReader(form.Encode()))
+	//#nosec G704 inputs are user controlled or follow specification
+	req, err := http.NewRequest("POST", b.tokenURL.String(), strings.NewReader(form.Encode()))
 	if err != nil {
 		return err
 	}
 	req.Header.Set("Content-Type", "application/x-www-form-urlencoded; charset=utf-8")
 	req.Header.Add("User-Agent", b.clientID)
 
+	//#nosec G704 inputs are user controlled or follow specification
 	resp, err := b.client.Do(req)
 	if err != nil {
 		return err
@@ -819,12 +832,12 @@ type jwtHubHandler struct {
 
 type jwtHubPost struct {
 	User string `json:"username"`
-	Pass string `json:"password"`
+	Pass string `json:"password"` //#nosec G117 exported struct intentionally holds secrets
 }
 type jwtHubResp struct {
 	Detail       string `json:"detail"`
 	Token        string `json:"token"`
-	RefreshToken string `json:"refresh_token"`
+	RefreshToken string `json:"refresh_token"` //#nosec G117 exported struct intentionally holds secrets
 }
 
 // NewJWTHubHandler creates a new JWTHandler for Docker Hub.
@@ -859,7 +872,7 @@ func (j *jwtHubHandler) ProcessChallenge(c challenge) error {
 	// send a login request to hub
 	bodyBytes, err := json.Marshal(jwtHubPost{
 		User: cred.User,
-		Pass: cred.Password,
+		Pass: cred.Password, //#nosec G117 field name follows spec
 	})
 	if err != nil {
 		return err
@@ -873,6 +886,7 @@ func (j *jwtHubHandler) ProcessChallenge(c challenge) error {
 	req.Header.Add("Accept", "application/json")
 	req.Header.Add("User-Agent", j.clientID)
 
+	//#nosec G704 inputs are user controlled or follow specification requirements
 	resp, err := j.client.Do(req)
 	if err != nil {
 		return err
@@ -894,10 +908,11 @@ func (j *jwtHubHandler) ProcessChallenge(c challenge) error {
 	return nil
 }
 
-// GenerateAuth for JWTHubHandler adds JWT header
-func (j *jwtHubHandler) GenerateAuth() (string, error) {
+// UpdateRequest for JWTHubHandler adds JWT header
+func (j *jwtHubHandler) UpdateRequest(req *http.Request) error {
 	if len(j.jwt) > 0 {
-		return fmt.Sprintf("JWT %s", j.jwt), nil
+		req.Header.Set("Authorization", fmt.Sprintf("JWT %s", j.jwt))
+		return nil
 	}
-	return "", errs.ErrHTTPUnauthorized
+	return errs.ErrHTTPUnauthorized
 }
