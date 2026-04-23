@@ -288,6 +288,7 @@ func defaultTestRunner(files map[string]fakeFileInfo) commandRunner {
 			}
 			return info, nil
 		},
+		readDir: os.ReadDir,
 		newRegClient: func() *regclient.RegClient {
 			return nil
 		},
