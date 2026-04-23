@@ -15,13 +15,6 @@ if [[ "${CI:-}" == "true" ]]; then
     sudo dpkg -i vendor_bin/goreleaser_${GORELEASER_VERSION}_amd64.deb
   fi
 
-  # do the same for golangci-lint
-  if ! command -v golangci-lint &> /dev/null; then
-    GOLANGCI_LINT_VERSION=$(cat .golangci-lint-version)
-    echo "GOLANGCI_LINT_VERSION=${GOLANGCI_LINT_VERSION}" >> $GITHUB_OUTPUT
-    echo "Using golangci-lint version ${GOLANGCI_LINT_VERSION}"
-    sudo dpkg -i vendor_bin/golangci-lint-${GOLANGCI_LINT_VERSION}-linux-amd64.deb
-  fi
 fi
 
 # Hermetic check: ensure all imports resolve from vendor/ only
