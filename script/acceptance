@@ -53,7 +53,8 @@ go run -mod=vendor ./test/fakes/registry >"${REGISTRY_OUTPUT}" 2>"${REGISTRY_LOG
 REGISTRY_PID=$!
 
 REGISTRY_ADDR=""
-for _ in {1..50}; do
+REGISTRY_READY_DEADLINE=$((SECONDS + 30))
+while ((SECONDS < REGISTRY_READY_DEADLINE)); do
     if ! kill -0 "${REGISTRY_PID}" 2>/dev/null; then
         echo "Registry stdout:"
         cat "${REGISTRY_OUTPUT}" || true
@@ -69,7 +70,7 @@ for _ in {1..50}; do
         fi
     fi
 
-    sleep 0.1
+    sleep 0.25
 done
 
 if [[ -z "${REGISTRY_ADDR}" ]]; then
@@ -77,7 +78,7 @@ if [[ -z "${REGISTRY_ADDR}" ]]; then
     cat "${REGISTRY_OUTPUT}" || true
     echo "Registry stderr:"
     cat "${REGISTRY_LOG}" || true
-    fail "local fake registry did not report an address"
+    fail "local fake registry did not report an address within 30 seconds"
 fi
 
 export GH_PIN_INSECURE_REGISTRIES="${REGISTRY_ADDR}"
