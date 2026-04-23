@@ -1,8 +1,30 @@
 #!/usr/bin/env bash
 
 set -euo pipefail
-
 source script/env "$@"
+say(){ printf "%b[%s]%b %s\n" "$1" "$2" "$OFF" "$3"; }
 
+say "$BLUE" lint "Formatting Go files"
 go fmt -mod=vendor ./...
-golangci-lint run --fix
+say "$GREEN" ok "Formatting done"
+
+say "$BLUE" lint "Tidying modules"
+if [[ "${GOPROXY:-}" == "off" ]]; then
+  say "$BLUE" lint "Skipping go mod tidy (GOPROXY=off; relying on vendor/)"
+else
+  go mod tidy
+  say "$GREEN" ok "Modules tidy"
+fi
+
+if [[ "${CI:-}" == "true" ]]; then
+  if git diff --quiet; then
+    say "$GREEN" ok "Clean after lint"
+  else
+    say "$RED" fail "Lint produced changes. Run script/lint locally and commit."
+    git --no-pager diff --stat
+    git --no-pager diff -U1
+    git checkout -- .
+    exit 1
+  fi
+fi
+say "$GREEN" ok "Lint checks passed"

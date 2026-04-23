@@ -28,7 +28,7 @@ func processDockerfileContent(rc *regclient.RegClient, data []byte, config Proce
 		if strings.HasPrefix(strings.ToUpper(trim), "FROM ") {
 			parts := strings.Fields(trim)
 			if len(parts) >= 2 && !hasDigest(parts[1], config.Algorithm) {
-				pinned, err := PinImage(rc, parts[1], config)
+				pinned, err := config.pinImage(rc, parts[1])
 				if err != nil {
 					LogWarning("%v", err)
 					output.WriteString(line + "\n")

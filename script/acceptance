@@ -6,73 +6,141 @@ source script/env "$@"
 
 echo -e "${BLUE}🧪 Running acceptance tests...${OFF}"
 
-# Create temporary directory for test files
 TEMP_DIR=$(mktemp -d)
 echo -e "${BLUE}Using temporary directory: ${TEMP_DIR}${OFF}"
 
-# Setup cleanup trap to ensure temp files are always removed
 cleanup() {
     echo -e "${BLUE}Cleaning up temporary files...${OFF}"
+    if [[ -n "${REGISTRY_PID:-}" ]] && kill -0 "${REGISTRY_PID}" 2>/dev/null; then
+        kill "${REGISTRY_PID}"
+        wait "${REGISTRY_PID}" 2>/dev/null || true
+    fi
     rm -rf "${TEMP_DIR}"
 }
 trap cleanup EXIT
 
+fail() {
+    echo -e "${RED}❌ FAIL: $*${OFF}"
+    exit 1
+}
+
+assert_file_contains() {
+    local needle="$1"
+    local path="$2"
+
+    if ! grep -Fq "${needle}" "${path}"; then
+        fail "Expected ${path} to contain: ${needle}"
+    fi
+}
+
+assert_output_contains() {
+    local needle="$1"
+    local output="$2"
+
+    if [[ "${output}" != *"${needle}"* ]]; then
+        echo "Output:"
+        echo "${output}"
+        fail "Expected output to contain: ${needle}"
+    fi
+}
+
 echo -e "${BLUE}Using go run to execute gh-pin directly...${OFF}"
+echo -e "${BLUE}Starting local fake OCI registry...${OFF}"
+
+REGISTRY_OUTPUT="${TEMP_DIR}/registry.out"
+REGISTRY_LOG="${TEMP_DIR}/registry.log"
+go run -mod=vendor ./test/fakes/registry >"${REGISTRY_OUTPUT}" 2>"${REGISTRY_LOG}" &
+REGISTRY_PID=$!
+
+REGISTRY_ADDR=""
+REGISTRY_READY_DEADLINE=$((SECONDS + 30))
+while ((SECONDS < REGISTRY_READY_DEADLINE)); do
+    if ! kill -0 "${REGISTRY_PID}" 2>/dev/null; then
+        echo "Registry stdout:"
+        cat "${REGISTRY_OUTPUT}" || true
+        echo "Registry stderr:"
+        cat "${REGISTRY_LOG}" || true
+        fail "local fake registry exited before becoming ready"
+    fi
+
+    if [[ -s "${REGISTRY_OUTPUT}" ]]; then
+        REGISTRY_ADDR=$(sed -n 's/^REGISTRY_ADDR=//p' "${REGISTRY_OUTPUT}" | head -n 1)
+        if [[ -n "${REGISTRY_ADDR}" ]]; then
+            break
+        fi
+    fi
+
+    sleep 0.25
+done
+
+if [[ -z "${REGISTRY_ADDR}" ]]; then
+    echo "Registry stdout:"
+    cat "${REGISTRY_OUTPUT}" || true
+    echo "Registry stderr:"
+    cat "${REGISTRY_LOG}" || true
+    fail "local fake registry did not report an address within 30 seconds"
+fi
+
+export GH_PIN_INSECURE_REGISTRIES="${REGISTRY_ADDR}"
+
+INDEX_DIGEST="sha256:944ee135f516fd1bc20a4e840486e034f988f3e60ec03ba047a00da9c8881d1c"
+AMD64_DIGEST="sha256:2222222222222222222222222222222222222222222222222222222222222222"
+ARM64_DIGEST="sha256:3333333333333333333333333333333333333333333333333333333333333333"
+
+CHECKOUT_SHA="aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+SETUP_GO_SHA="bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+SETUP_NODE_SHA="cccccccccccccccccccccccccccccccccccccccc"
+ACTION_MAP="${TEMP_DIR}/github-actions-map.json"
+cat > "${ACTION_MAP}" <<EOF
+{
+  "actions/checkout@v4": "${CHECKOUT_SHA}",
+  "actions/checkout@v3": "${CHECKOUT_SHA}",
+  "actions/setup-go@v5": "${SETUP_GO_SHA}",
+  "actions/setup-node@v4": "${SETUP_NODE_SHA}"
+}
+EOF
+export GH_PIN_GITHUB_RESOLVER_MAP="${ACTION_MAP}"
+
+LOCAL_UBUNTU="${REGISTRY_ADDR}/library/ubuntu:latest"
+LOCAL_ALPINE="${REGISTRY_ADDR}/library/alpine:3.18"
+LOCAL_NGINX="${REGISTRY_ADDR}/library/nginx:latest"
+LOCAL_POSTGRES="${REGISTRY_ADDR}/library/postgres:15"
 
 # Test 1: Dockerfile pinning
 echo -e "${BLUE}Test 1: Dockerfile SHA pinning...${OFF}"
 
-# Create a temporary copy of the test Dockerfile with proper naming
-cp test/fixtures/Dockerfile.test "${TEMP_DIR}/Dockerfile"
+cat > "${TEMP_DIR}/Dockerfile" <<EOF
+FROM ${LOCAL_UBUNTU}
+FROM ${LOCAL_ALPINE}
+EOF
 
-# Verify the file contains unpinned images initially
-if ! grep -q "FROM ubuntu:latest" "${TEMP_DIR}/Dockerfile"; then
-    echo -e "${RED}❌ Test setup failed: Dockerfile should contain 'ubuntu:latest'${OFF}"
-    exit 1
-fi
-
-if ! grep -q "FROM alpine:3.18" "${TEMP_DIR}/Dockerfile"; then
-    echo -e "${RED}❌ Test setup failed: Dockerfile should contain 'alpine:3.18'${OFF}"
-    exit 1
-fi
+assert_file_contains "FROM ${LOCAL_UBUNTU}" "${TEMP_DIR}/Dockerfile"
+assert_file_contains "FROM ${LOCAL_ALPINE}" "${TEMP_DIR}/Dockerfile"
 
 echo -e "${GREEN}✅ Test file contains unpinned images as expected${OFF}"
 
-# Run gh-pin on the temporary Dockerfile
 echo -e "${BLUE}Running gh-pin on test Dockerfile...${OFF}"
-go run -mod=vendor ./cmd/gh-pin "${TEMP_DIR}/Dockerfile"
+go run -mod=vendor ./cmd/gh-pin --no-color "${TEMP_DIR}/Dockerfile"
 
-# Verify the file now contains SHA digests
-if ! grep -q "FROM ubuntu:latest@sha256:" "${TEMP_DIR}/Dockerfile"; then
-    echo -e "${RED}❌ FAIL: ubuntu:latest was not pinned to SHA digest${OFF}"
-    echo "File contents:"
-    cat "${TEMP_DIR}/Dockerfile"
-    exit 1
-fi
+assert_file_contains "FROM ${LOCAL_UBUNTU}@${INDEX_DIGEST}" "${TEMP_DIR}/Dockerfile"
+assert_file_contains "FROM ${LOCAL_ALPINE}@${INDEX_DIGEST}" "${TEMP_DIR}/Dockerfile"
 
-if ! grep -q "FROM alpine:3.18@sha256:" "${TEMP_DIR}/Dockerfile"; then
-    echo -e "${RED}❌ FAIL: alpine:3.18 was not pinned to SHA digest${OFF}"
-    echo "File contents:"
-    cat "${TEMP_DIR}/Dockerfile"
-    exit 1
-fi
-
-echo -e "${GREEN}✅ PASS: Both images were successfully pinned to SHA digests${OFF}"
+echo -e "${GREEN}✅ PASS: Both images were successfully pinned to deterministic index digests${OFF}"
 
 # Test 2: Dry-run mode
 echo -e "${BLUE}Test 2: Dry-run mode...${OFF}"
 
-# Create a separate subdirectory for dry-run test
 mkdir -p "${TEMP_DIR}/dry-run-test"
-cp test/fixtures/Dockerfile.test "${TEMP_DIR}/dry-run-test/Dockerfile"
+cat > "${TEMP_DIR}/dry-run-test/Dockerfile" <<EOF
+FROM ${LOCAL_UBUNTU}
+EOF
 
-# Run in dry-run mode
-go run -mod=vendor ./cmd/gh-pin --dry-run "${TEMP_DIR}/dry-run-test/Dockerfile"
+before=$(<"${TEMP_DIR}/dry-run-test/Dockerfile")
+go run -mod=vendor ./cmd/gh-pin --no-color --dry-run "${TEMP_DIR}/dry-run-test/Dockerfile"
+after=$(<"${TEMP_DIR}/dry-run-test/Dockerfile")
 
-# Verify the file was NOT modified in dry-run mode
-if grep -q "FROM docker.io/library/ubuntu:latest@sha256:" "${TEMP_DIR}/dry-run-test/Dockerfile"; then
-    echo -e "${RED}❌ FAIL: File was modified in dry-run mode${OFF}"
-    exit 1
+if [[ "${before}" != "${after}" ]]; then
+    fail "File was modified in dry-run mode"
 fi
 
 echo -e "${GREEN}✅ PASS: Dry-run mode did not modify the file${OFF}"
@@ -82,9 +150,8 @@ echo -e "${BLUE}Test 3: Version flag...${OFF}"
 
 version_output=$(go run -mod=vendor ./cmd/gh-pin --version)
 if [[ ! "$version_output" =~ "built at" ]]; then
-    echo -e "${RED}❌ FAIL: Version output does not contain expected format${OFF}"
     echo "Got: $version_output"
-    exit 1
+    fail "Version output does not contain expected format"
 fi
 
 echo -e "${GREEN}✅ PASS: Version flag works correctly${OFF}"
@@ -92,32 +159,24 @@ echo -e "${GREEN}✅ PASS: Version flag works correctly${OFF}"
 # Test 4: Algorithm flag
 echo -e "${BLUE}Test 4: Algorithm flag functionality...${OFF}"
 
-# Create a test file with a sha256-pinned image
 mkdir -p "${TEMP_DIR}/algo-test"
-echo "FROM ubuntu:latest@sha256:7c06e91f61fa88c08cc74f7e1b7c69ae24910d745357e0dfe1d2c0322aaf20f9" > "${TEMP_DIR}/algo-test/Dockerfile"
+echo "FROM ${LOCAL_UBUNTU}@sha256:7c06e91f61fa88c08cc74f7e1b7c69ae24910d745357e0dfe1d2c0322aaf20f9" > "${TEMP_DIR}/algo-test/Dockerfile"
 
-# Test default behavior (should skip sha256-pinned image)
-output=$(go run -mod=vendor ./cmd/gh-pin --dry-run --quiet "${TEMP_DIR}/algo-test/Dockerfile" 2>&1 || true)
+output=$(go run -mod=vendor ./cmd/gh-pin --no-color --dry-run --quiet "${TEMP_DIR}/algo-test/Dockerfile" 2>&1 || true)
 if [[ -n "$output" ]]; then
-    echo -e "${RED}❌ FAIL: Default algo=sha256 should skip already pinned images${OFF}"
     echo "Got output: $output"
-    exit 1
+    fail "Default algo=sha256 should skip already pinned images"
 fi
 
-# Test with different algorithm (should process sha256-pinned image)
-output=$(go run -mod=vendor ./cmd/gh-pin --dry-run --algo=sha512 "${TEMP_DIR}/algo-test/Dockerfile" 2>&1 || true)
-if [[ ! "$output" =~ "DOCKERFILE" ]]; then
-    echo -e "${RED}❌ FAIL: algo=sha512 should process sha256-pinned images${OFF}"
-    echo "Got output: $output"
-    exit 1
-fi
+output=$(go run -mod=vendor ./cmd/gh-pin --no-color --dry-run --algo=sha512 "${TEMP_DIR}/algo-test/Dockerfile" 2>&1 || true)
+assert_output_contains "DOCKERFILE" "${output}"
+assert_output_contains "${LOCAL_UBUNTU}@sha256:7c06e91f61fa88c08cc74f7e1b7c69ae24910d745357e0dfe1d2c0322aaf20f9" "${output}"
 
 echo -e "${GREEN}✅ PASS: Algorithm flag works correctly${OFF}"
 
 # Test 5: GitHub Actions workflow processing
 echo -e "${BLUE}Test 5: GitHub Actions workflow processing...${OFF}"
 
-# Create a test workflow file
 mkdir -p "${TEMP_DIR}/github-actions-test/.github/workflows"
 cat > "${TEMP_DIR}/github-actions-test/.github/workflows/test.yml" << 'EOF'
 name: test
@@ -130,34 +189,31 @@ jobs:
       - uses: actions/setup-go@v5
 EOF
 
-# Test dry-run mode for GitHub Actions (to avoid API calls)
-echo -e "${BLUE}Testing GitHub Actions detection in dry-run mode...${OFF}"
-output=$(go run -mod=vendor ./cmd/gh-pin --dry-run "${TEMP_DIR}/github-actions-test/.github/workflows/test.yml" 2>&1 || true)
-if [[ ! "$output" =~ "Processing GitHub Actions" ]]; then
-    echo -e "${RED}❌ FAIL: GitHub Actions workflow should be detected${OFF}"
-    echo "Got output: $output"
-    exit 1
-fi
+echo -e "${BLUE}Testing GitHub Actions dry-run with static resolver...${OFF}"
+output=$(go run -mod=vendor ./cmd/gh-pin --no-color --dry-run "${TEMP_DIR}/github-actions-test/.github/workflows/test.yml" 2>&1 || true)
+assert_output_contains "Processing GitHub Actions" "${output}"
+assert_output_contains "actions/checkout@${CHECKOUT_SHA}" "${output}"
+assert_output_contains "actions/setup-go@${SETUP_GO_SHA}" "${output}"
 
-echo -e "${GREEN}✅ PASS: GitHub Actions workflow detection works correctly${OFF}"
+go run -mod=vendor ./cmd/gh-pin --no-color "${TEMP_DIR}/github-actions-test/.github/workflows/test.yml"
+assert_file_contains "uses: actions/checkout@${CHECKOUT_SHA} # pin@v4" "${TEMP_DIR}/github-actions-test/.github/workflows/test.yml"
+assert_file_contains "uses: actions/setup-go@${SETUP_GO_SHA} # pin@v5" "${TEMP_DIR}/github-actions-test/.github/workflows/test.yml"
+
+echo -e "${GREEN}✅ PASS: GitHub Actions workflow processing works offline${OFF}"
 
 # Test force mode flags
 echo -e "${BLUE}Test 6: Force mode flags...${OFF}"
 
-# Test force docker mode on a workflow file (should be ignored)
-output=$(go run -mod=vendor ./cmd/gh-pin --dry-run --mode=docker "${TEMP_DIR}/github-actions-test/.github/workflows/test.yml" 2>&1 || true)
+output=$(go run -mod=vendor ./cmd/gh-pin --no-color --dry-run --mode=docker "${TEMP_DIR}/github-actions-test/.github/workflows/test.yml" 2>&1 || true)
 if [[ "$output" =~ "Processing" ]]; then
-    echo -e "${RED}❌ FAIL: Force docker mode should ignore GitHub Actions workflows${OFF}"
     echo "Got output: $output"
-    exit 1
+    fail "Force docker mode should ignore GitHub Actions workflows"
 fi
 
-# Test force actions mode on a docker file (should be ignored) 
-output=$(go run -mod=vendor ./cmd/gh-pin --dry-run --mode=actions "${TEMP_DIR}/Dockerfile" 2>&1 || true)
+output=$(go run -mod=vendor ./cmd/gh-pin --no-color --dry-run --mode=actions "${TEMP_DIR}/Dockerfile" 2>&1 || true)
 if [[ "$output" =~ "Processing" ]]; then
-    echo -e "${RED}❌ FAIL: Force actions mode should ignore Dockerfiles${OFF}"
     echo "Got output: $output"
-    exit 1
+    fail "Force actions mode should ignore Dockerfiles"
 fi
 
 echo -e "${GREEN}✅ PASS: Force mode flags work correctly${OFF}"
@@ -165,110 +221,76 @@ echo -e "${GREEN}✅ PASS: Force mode flags work correctly${OFF}"
 # Test 7: Platform-specific pinning
 echo -e "${BLUE}Test 7: Platform-specific pinning functionality...${OFF}"
 
-# Create a test Dockerfile with multi-platform images
 mkdir -p "${TEMP_DIR}/platform-test"
-cat > "${TEMP_DIR}/platform-test/Dockerfile" << 'EOF'
-FROM nginx:latest
-FROM postgres:15
+cat > "${TEMP_DIR}/platform-test/Dockerfile" <<EOF
+FROM ${LOCAL_NGINX}
+FROM ${LOCAL_POSTGRES}
 EOF
 
-# Create a test Docker Compose file with multi-platform images
-cat > "${TEMP_DIR}/platform-test/docker-compose.yml" << 'EOF'
+cat > "${TEMP_DIR}/platform-test/docker-compose.yml" <<EOF
 version: '3.8'
 services:
   web:
-    image: nginx:latest
+    image: ${LOCAL_NGINX}
     ports:
       - "80:80"
   db:
-    image: postgres:15
+    image: ${LOCAL_POSTGRES}
     environment:
       POSTGRES_DB: mydb
 EOF
 
-# Test platform-specific Dockerfile pinning in dry-run mode
 echo -e "${BLUE}Testing platform-specific Dockerfile pinning (linux/amd64)...${OFF}"
-dockerfile_output=$(go run -mod=vendor ./cmd/gh-pin --platform=linux/amd64 --dry-run "${TEMP_DIR}/platform-test/Dockerfile" 2>&1 || true)
-if [[ ! "$dockerfile_output" =~ "nginx:latest" ]] || [[ ! "$dockerfile_output" =~ "postgres:15" ]]; then
-    echo -e "${RED}❌ FAIL: Platform-specific Dockerfile pinning should process images${OFF}"
-    echo "Got output: $dockerfile_output"
-    exit 1
-fi
+dockerfile_output=$(go run -mod=vendor ./cmd/gh-pin --no-color --platform=linux/amd64 --dry-run "${TEMP_DIR}/platform-test/Dockerfile" 2>&1 || true)
+assert_output_contains "${LOCAL_NGINX}@${AMD64_DIGEST}" "${dockerfile_output}"
+assert_output_contains "${LOCAL_POSTGRES}@${AMD64_DIGEST}" "${dockerfile_output}"
 
-# Verify platform-specific output format (should show clean format without comments)
 if [[ "$dockerfile_output" =~ "# pin@" ]]; then
-    echo -e "${RED}❌ FAIL: Platform-specific pinning should not show comments${OFF}"
     echo "Got output: $dockerfile_output"
-    exit 1
+    fail "Platform-specific pinning should not show comments"
 fi
 
 echo -e "${GREEN}✅ PASS: Platform-specific Dockerfile pinning works correctly${OFF}"
 
-# Test platform-specific Docker Compose pinning in dry-run mode
 echo -e "${BLUE}Testing platform-specific Docker Compose pinning (linux/arm64)...${OFF}"
-compose_output=$(go run -mod=vendor ./cmd/gh-pin --platform=linux/arm64 --dry-run "${TEMP_DIR}/platform-test/docker-compose.yml" 2>&1 || true)
-if [[ ! "$compose_output" =~ "Processing Compose" ]] || [[ ! "$compose_output" =~ "nginx:latest" ]] || [[ ! "$compose_output" =~ "postgres:15" ]]; then
-    echo -e "${RED}❌ FAIL: Platform-specific Compose pinning should process images${OFF}"
-    echo "Got output: $compose_output"
-    exit 1
-fi
+compose_output=$(go run -mod=vendor ./cmd/gh-pin --no-color --platform=linux/arm64 --dry-run "${TEMP_DIR}/platform-test/docker-compose.yml" 2>&1 || true)
+assert_output_contains "Processing Compose" "${compose_output}"
+assert_output_contains "${LOCAL_NGINX}@${ARM64_DIGEST}" "${compose_output}"
+assert_output_contains "${LOCAL_POSTGRES}@${ARM64_DIGEST}" "${compose_output}"
 
-# Verify platform-specific compose output format (should show clean format without comments)
 if [[ "$compose_output" =~ "# pin@" ]]; then
-    echo -e "${RED}❌ FAIL: Platform-specific Compose pinning should not show comments${OFF}"
     echo "Got output: $compose_output"
-    exit 1
+    fail "Platform-specific Compose pinning should not show comments"
 fi
 
 echo -e "${GREEN}✅ PASS: Platform-specific Docker Compose pinning works correctly${OFF}"
 
-# Test that different platforms may produce different digests
 echo -e "${BLUE}Testing platform specificity with different architectures...${OFF}"
 
-# Test with linux/amd64
-amd64_output=$(go run -mod=vendor ./cmd/gh-pin --platform=linux/amd64 --dry-run "${TEMP_DIR}/platform-test/Dockerfile" 2>&1 || true)
-# Test with linux/arm64  
-arm64_output=$(go run -mod=vendor ./cmd/gh-pin --platform=linux/arm64 --dry-run "${TEMP_DIR}/platform-test/Dockerfile" 2>&1 || true)
-
-# Both should work (though they might have same or different digests)
-if [[ ! "$amd64_output" =~ "nginx:latest" ]] || [[ ! "$arm64_output" =~ "nginx:latest" ]]; then
-    echo -e "${RED}❌ FAIL: Both platform tests should process nginx:latest${OFF}"
-    echo "AMD64 output: $amd64_output"
-    echo "ARM64 output: $arm64_output"
-    exit 1
-fi
+amd64_output=$(go run -mod=vendor ./cmd/gh-pin --no-color --platform=linux/amd64 --dry-run "${TEMP_DIR}/platform-test/Dockerfile" 2>&1 || true)
+arm64_output=$(go run -mod=vendor ./cmd/gh-pin --no-color --platform=linux/arm64 --dry-run "${TEMP_DIR}/platform-test/Dockerfile" 2>&1 || true)
+assert_output_contains "${LOCAL_NGINX}@${AMD64_DIGEST}" "${amd64_output}"
+assert_output_contains "${LOCAL_NGINX}@${ARM64_DIGEST}" "${arm64_output}"
 
 echo -e "${GREEN}✅ PASS: Multiple platform architectures work correctly${OFF}"
 
-# Test platform flag with invalid platform
 echo -e "${BLUE}Testing invalid platform handling...${OFF}"
-invalid_platform_output=$(go run -mod=vendor ./cmd/gh-pin --platform=invalid/platform --dry-run "${TEMP_DIR}/platform-test/Dockerfile" 2>&1 || true)
+invalid_platform_output=$(go run -mod=vendor ./cmd/gh-pin --no-color --platform=invalid/platform --dry-run "${TEMP_DIR}/platform-test/Dockerfile" 2>&1 || true)
 if [[ ! "$invalid_platform_output" =~ "Warning: Could not find manifest for platform" ]] || [[ ! "$invalid_platform_output" =~ "Falling back" ]]; then
-    echo -e "${RED}❌ FAIL: Invalid platform should produce warning and fallback message${OFF}"
     echo "Got output: $invalid_platform_output"
-    exit 1
+    fail "Invalid platform should produce warning and fallback message"
 fi
+assert_output_contains "${LOCAL_NGINX}@${INDEX_DIGEST}" "${invalid_platform_output}"
 
 echo -e "${GREEN}✅ PASS: Invalid platform handling works correctly (graceful fallback)${OFF}"
 
-# Test default behavior (index digests) vs platform-specific behavior
 echo -e "${BLUE}Testing index digest vs platform-specific digest behavior...${OFF}"
 
-# Test default behavior (should show clean tag@digest format)
-default_output=$(go run -mod=vendor ./cmd/gh-pin --dry-run "${TEMP_DIR}/platform-test/docker-compose.yml" 2>&1 || true)
-if [[ ! "$default_output" =~ "nginx:latest@sha256:" ]]; then
-    echo -e "${RED}❌ FAIL: Default behavior should show clean tag@digest format${OFF}"
-    echo "Got output: $default_output"
-    exit 1
-fi
+default_output=$(go run -mod=vendor ./cmd/gh-pin --no-color --dry-run "${TEMP_DIR}/platform-test/docker-compose.yml" 2>&1 || true)
+assert_output_contains "${LOCAL_NGINX}@${INDEX_DIGEST}" "${default_output}"
 
-# Test platform-specific behavior (should also show clean format)
-platform_output=$(go run -mod=vendor ./cmd/gh-pin --platform=linux/amd64 --dry-run "${TEMP_DIR}/platform-test/docker-compose.yml" 2>&1 || true)
-if [[ ! "$platform_output" =~ "nginx:latest@sha256:" ]]; then
-    echo -e "${RED}❌ FAIL: Platform-specific behavior should show clean tag@digest format${OFF}"
-    echo "Got output: $platform_output"
-    exit 1
-fi
+platform_output=$(go run -mod=vendor ./cmd/gh-pin --no-color --platform=linux/amd64 --dry-run "${TEMP_DIR}/platform-test/docker-compose.yml" 2>&1 || true)
+assert_output_contains "${LOCAL_NGINX}@${AMD64_DIGEST}" "${platform_output}"
 
 echo -e "${GREEN}✅ PASS: Index vs platform-specific behavior works correctly${OFF}"
 

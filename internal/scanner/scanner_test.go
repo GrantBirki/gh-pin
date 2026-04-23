@@ -51,6 +51,134 @@ func TestIsStandardDockerfile(t *testing.T) {
 	}
 }
 
+func TestIsGitHubWorkflowFile(t *testing.T) {
+	tests := []struct {
+		name string
+		path string
+		want bool
+	}{
+		{
+			name: "workflow yml",
+			path: "/repo/.github/workflows/ci.yml",
+			want: true,
+		},
+		{
+			name: "workflow yaml",
+			path: "/repo/.github/workflows/release.yaml",
+			want: true,
+		},
+		{
+			name: "workflow directory but not yaml",
+			path: "/repo/.github/workflows/README.md",
+			want: false,
+		},
+		{
+			name: "yaml outside workflow directory",
+			path: "/repo/config.yml",
+			want: false,
+		},
+		{
+			name: "similarly named directory",
+			path: "/repo/.github/workflows-old/ci.yml",
+			want: false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := isGitHubWorkflowFile(tt.path)
+			if got != tt.want {
+				t.Fatalf("isGitHubWorkflowFile(%q) = %v, want %v", tt.path, got, tt.want)
+			}
+		})
+	}
+}
+
+func TestDetectFileType(t *testing.T) {
+	tests := []struct {
+		name   string
+		path   string
+		data   string
+		config processor.ProcessorConfig
+		want   string
+	}{
+		{
+			name: "actions by workflow path",
+			path: "/repo/.github/workflows/ci.yml",
+			data: "not: workflow",
+			want: "actions",
+		},
+		{
+			name: "compose by services structure",
+			path: "/repo/docker-compose.yml",
+			data: "services:\n  web:\n    image: nginx:latest\n",
+			want: "compose",
+		},
+		{
+			name: "actions by yaml structure",
+			path: "/repo/build.yml",
+			data: "on: push\njobs:\n  test:\n    runs-on: ubuntu-latest\n",
+			want: "actions",
+		},
+		{
+			name: "unknown yaml",
+			path: "/repo/values.yaml",
+			data: "database:\n  host: localhost\n",
+			want: "unknown",
+		},
+		{
+			name:   "force docker accepts compose only",
+			path:   "/repo/config.yml",
+			data:   "services:\n  web:\n    image: nginx:latest\n",
+			config: processor.ProcessorConfig{ForceMode: "docker"},
+			want:   "compose",
+		},
+		{
+			name:   "force docker rejects actions",
+			path:   "/repo/.github/workflows/ci.yml",
+			data:   "on: push\njobs:\n  test: {}\n",
+			config: processor.ProcessorConfig{ForceMode: "docker"},
+			want:   "unknown",
+		},
+		{
+			name:   "force actions accepts workflow path",
+			path:   "/repo/.github/workflows/ci.yaml",
+			data:   "services:\n  web:\n    image: nginx:latest\n",
+			config: processor.ProcessorConfig{ForceMode: "actions"},
+			want:   "actions",
+		},
+		{
+			name:   "force actions accepts workflow shape",
+			path:   "/repo/config.yml",
+			data:   "on: pull_request\njobs:\n  test: {}\n",
+			config: processor.ProcessorConfig{ForceMode: "actions"},
+			want:   "actions",
+		},
+		{
+			name:   "force actions rejects compose",
+			path:   "/repo/docker-compose.yml",
+			data:   "services:\n  web:\n    image: nginx:latest\n",
+			config: processor.ProcessorConfig{ForceMode: "actions"},
+			want:   "unknown",
+		},
+		{
+			name: "invalid yaml",
+			path: "/repo/broken.yml",
+			data: "invalid: yaml: [",
+			want: "unknown",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := detectFileType(tt.path, []byte(tt.data), tt.config)
+			if got != tt.want {
+				t.Fatalf("detectFileType() = %q, want %q", got, tt.want)
+			}
+		})
+	}
+}
+
 func TestScanPath_FileSystemErrors(t *testing.T) {
 	tempDir := t.TempDir()
 	config := processor.ProcessorConfig{DryRun: true, Algorithm: "sha256"}
@@ -137,6 +265,47 @@ func TestScanPath_FileSystemErrors(t *testing.T) {
 	})
 }
 
+func TestScanPath_ForceModes(t *testing.T) {
+	tempDir := t.TempDir()
+	workflowDir := filepath.Join(tempDir, ".github", "workflows")
+	if err := os.MkdirAll(workflowDir, 0755); err != nil {
+		t.Fatalf("os.MkdirAll() error: %v", err)
+	}
+
+	files := map[string]string{
+		"Dockerfile":         ".dockerignore only\n",
+		"docker-compose.yml": "services:\n  web:\n    build: .\n",
+		filepath.Join(".github", "workflows", "ci.yml"): "steps:\n  - uses: actions/checkout@0123456789012345678901234567890123456789\n",
+	}
+	for name, content := range files {
+		if err := os.WriteFile(filepath.Join(tempDir, name), []byte(content), 0644); err != nil {
+			t.Fatalf("os.WriteFile(%q) error: %v", name, err)
+		}
+	}
+
+	tests := []struct {
+		name   string
+		config processor.ProcessorConfig
+	}{
+		{
+			name:   "docker only skips actions",
+			config: processor.ProcessorConfig{DryRun: true, Algorithm: "sha256", ForceMode: "docker"},
+		},
+		{
+			name:   "actions only skips docker files",
+			config: processor.ProcessorConfig{DryRun: true, Algorithm: "sha256", ForceMode: "actions"},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if err := ScanPath(nil, tempDir, tt.config, true); err != nil {
+				t.Fatalf("ScanPath() error: %v", err)
+			}
+		})
+	}
+}
+
 func TestProcessSingleFile_FileTypes(t *testing.T) {
 	tempDir := t.TempDir()
 	config := processor.ProcessorConfig{DryRun: true, Algorithm: "sha256"}
@@ -205,6 +374,81 @@ func TestProcessSingleFile_FileTypes(t *testing.T) {
 				t.Errorf("Expected no error but got: %v", err)
 			}
 		})
+	}
+}
+
+func TestProcessSingleFile_ForceModeSkips(t *testing.T) {
+	tempDir := t.TempDir()
+
+	composePath := filepath.Join(tempDir, "docker-compose.yml")
+	if err := os.WriteFile(composePath, []byte("services:\n  web:\n    image: nginx@sha256:abc123\n"), 0644); err != nil {
+		t.Fatalf("os.WriteFile() error: %v", err)
+	}
+
+	workflowPath := filepath.Join(tempDir, "workflow.yml")
+	if err := os.WriteFile(workflowPath, []byte("on: push\njobs:\n  test: {}\n"), 0644); err != nil {
+		t.Fatalf("os.WriteFile() error: %v", err)
+	}
+
+	dockerfilePath := filepath.Join(tempDir, "Dockerfile")
+	if err := os.WriteFile(dockerfilePath, []byte("FROM nginx@sha256:abc123\n"), 0644); err != nil {
+		t.Fatalf("os.WriteFile() error: %v", err)
+	}
+
+	tests := []struct {
+		name   string
+		target string
+		config processor.ProcessorConfig
+	}{
+		{
+			name:   "compose skipped in actions mode",
+			target: composePath,
+			config: processor.ProcessorConfig{DryRun: true, Algorithm: "sha256", ForceMode: "actions"},
+		},
+		{
+			name:   "workflow skipped in docker mode",
+			target: workflowPath,
+			config: processor.ProcessorConfig{DryRun: true, Algorithm: "sha256", ForceMode: "docker"},
+		},
+		{
+			name:   "dockerfile skipped in actions mode",
+			target: dockerfilePath,
+			config: processor.ProcessorConfig{DryRun: true, Algorithm: "sha256", ForceMode: "actions"},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if err := ProcessSingleFile(nil, tt.target, tt.config); err != nil {
+				t.Fatalf("ProcessSingleFile() error: %v", err)
+			}
+		})
+	}
+}
+
+func TestProcessSingleFile_ActionsAndUnknownYaml(t *testing.T) {
+	tempDir := t.TempDir()
+
+	workflowDir := filepath.Join(tempDir, ".github", "workflows")
+	if err := os.MkdirAll(workflowDir, 0755); err != nil {
+		t.Fatalf("os.MkdirAll() error: %v", err)
+	}
+
+	workflowPath := filepath.Join(workflowDir, "ci.yml")
+	if err := os.WriteFile(workflowPath, []byte("steps:\n  - uses: actions/checkout@0123456789012345678901234567890123456789\n"), 0644); err != nil {
+		t.Fatalf("os.WriteFile() error: %v", err)
+	}
+
+	unknownYamlPath := filepath.Join(tempDir, "values.yml")
+	if err := os.WriteFile(unknownYamlPath, []byte("database:\n  host: localhost\n"), 0644); err != nil {
+		t.Fatalf("os.WriteFile() error: %v", err)
+	}
+
+	if err := ProcessSingleFile(nil, workflowPath, processor.ProcessorConfig{DryRun: true, Algorithm: "sha256"}); err != nil {
+		t.Fatalf("ProcessSingleFile(workflow) error: %v", err)
+	}
+	if err := ProcessSingleFile(nil, unknownYamlPath, processor.ProcessorConfig{DryRun: true, Algorithm: "sha256"}); err != nil {
+		t.Fatalf("ProcessSingleFile(unknown yaml) error: %v", err)
 	}
 }
 

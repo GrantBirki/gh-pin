@@ -121,3 +121,13 @@ func TestString(t *testing.T) {
 		}
 	})
 }
+
+func TestDefaultBuildInfoReader(t *testing.T) {
+	info, ok := defaultBuildInfoReader()
+	if !ok {
+		t.Fatal("defaultBuildInfoReader() ok = false, want true for test binary")
+	}
+	if info == nil {
+		t.Fatal("defaultBuildInfoReader() info = nil")
+	}
+}

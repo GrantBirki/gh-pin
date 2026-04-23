@@ -1,10 +1,13 @@
 package processor
 
 import (
+	"errors"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/regclient/regclient"
 )
 
 func TestProcessDockerfile_FileErrors(t *testing.T) {
@@ -142,6 +145,50 @@ FROM ubuntu@sha256:abc123`
 			t.Errorf("Expected no error for malformed FROM statements, got %v", err)
 		}
 	})
+}
+
+func TestProcessDockerfileContent_RewritesUnpinnedImages(t *testing.T) {
+	config := ProcessorConfig{
+		Algorithm: "sha256",
+		ImagePinner: func(_ *regclient.RegClient, image string, _ ProcessorConfig) (string, error) {
+			return image + "@sha256:abc123", nil
+		},
+	}
+
+	input := []byte("# base image\n  FROM ubuntu:latest\nRUN echo test\n")
+	output, changed, err := processDockerfileContent(nil, input, config)
+	if err != nil {
+		t.Fatalf("processDockerfileContent() error: %v", err)
+	}
+	if !changed {
+		t.Fatal("processDockerfileContent() changed = false, want true")
+	}
+
+	want := "# base image\n  FROM ubuntu:latest@sha256:abc123\nRUN echo test\n"
+	if string(output) != want {
+		t.Fatalf("output = %q, want %q", string(output), want)
+	}
+}
+
+func TestProcessDockerfileContent_PinErrorLeavesLineUnchanged(t *testing.T) {
+	config := ProcessorConfig{
+		Algorithm: "sha256",
+		ImagePinner: func(_ *regclient.RegClient, _ string, _ ProcessorConfig) (string, error) {
+			return "", errors.New("registry unavailable")
+		},
+	}
+
+	input := []byte("FROM ubuntu:latest\nRUN echo test\n")
+	output, changed, err := processDockerfileContent(nil, input, config)
+	if err != nil {
+		t.Fatalf("processDockerfileContent() error: %v", err)
+	}
+	if changed {
+		t.Fatal("processDockerfileContent() changed = true, want false")
+	}
+	if string(output) != string(input) {
+		t.Fatalf("output = %q, want original %q", string(output), string(input))
+	}
 }
 
 func TestDockerfileLineProcessing(t *testing.T) {
