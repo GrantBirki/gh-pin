@@ -16,11 +16,16 @@ func TestCommandRunnerCompletionCompletesCurrentDirectoryPaths(t *testing.T) {
 	if err := os.Mkdir(filepath.Join(tempDir, "docs"), 0755); err != nil {
 		t.Fatalf("mkdir docs: %v", err)
 	}
+	if err := os.Mkdir(filepath.Join(tempDir, ".git"), 0755); err != nil {
+		t.Fatalf("mkdir .git: %v", err)
+	}
 	for _, file := range []string{
 		filepath.Join(tempDir, ".github", "workflows", "ci.yml"),
 		filepath.Join(tempDir, ".github", "workflows", "release.yml"),
 		filepath.Join(tempDir, "Dockerfile"),
 		filepath.Join(tempDir, ".env"),
+		filepath.Join(tempDir, ".gitattributes"),
+		filepath.Join(tempDir, ".gitignore"),
 	} {
 		if err := os.WriteFile(file, []byte("test"), 0644); err != nil {
 			t.Fatalf("write %s: %v", file, err)
@@ -39,6 +44,7 @@ func TestCommandRunnerCompletionCompletesCurrentDirectoryPaths(t *testing.T) {
 			name:      "hidden directory after dot prefix",
 			args:      []string{"__complete", ".g"},
 			want:      []string{".github/"},
+			notWant:   []string{".git/", ".gitattributes", ".gitignore"},
 			directive: ":2",
 		},
 		{

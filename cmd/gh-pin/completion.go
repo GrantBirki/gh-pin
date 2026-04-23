@@ -161,6 +161,9 @@ func (r commandRunner) completePath(prefix string) ([]completionItem, int) {
 	dirCount := 0
 	for _, entry := range entries {
 		name := entry.Name()
+		if skipPathCompletionEntry(name) {
+			continue
+		}
 		if namePrefix == "" && strings.HasPrefix(name, ".") && !includeHidden {
 			continue
 		}
@@ -180,4 +183,13 @@ func (r commandRunner) completePath(prefix string) ([]completionItem, int) {
 		return completions, shellCompDirectiveNoSpace
 	}
 	return completions, shellCompDirectiveDefault
+}
+
+func skipPathCompletionEntry(name string) bool {
+	switch name {
+	case ".git", ".gitattributes", ".gitignore", ".gitmodules":
+		return true
+	default:
+		return false
+	}
 }
