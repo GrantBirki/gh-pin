@@ -1,6 +1,10 @@
 package processor
 
-import "os"
+import (
+	"os"
+
+	"github.com/regclient/regclient"
+)
 
 // ComposeFile is a flexible representation of a docker-compose YAML that preserves all fields
 type ComposeFile map[string]interface{}
@@ -16,6 +20,17 @@ type ProcessorConfig struct {
 	Quiet          bool           // suppress informational messages when no changes are needed
 	Platform       string         // platform-specific manifest digest (e.g., linux/amd64, linux/arm/v7)
 	GitHubResolver GitHubResolver // resolver for GitHub API calls (injected for testing)
+	ImagePinner    ImagePinner    // resolver for Docker image pins (injected for testing)
+}
+
+// ImagePinner resolves an image reference to a pinned digest reference.
+type ImagePinner func(rc *regclient.RegClient, image string, config ProcessorConfig) (string, error)
+
+func (config ProcessorConfig) pinImage(rc *regclient.RegClient, image string) (string, error) {
+	if config.ImagePinner != nil {
+		return config.ImagePinner(rc, image, config)
+	}
+	return PinImage(rc, image, config)
 }
 
 // getFileMode returns the file mode of the given path, defaulting to 0644 if unable to stat

@@ -1,9 +1,12 @@
 package processor
 
 import (
+	"errors"
 	"os"
 	"path/filepath"
 	"testing"
+
+	"github.com/regclient/regclient"
 )
 
 func TestProcessCompose_FileErrors(t *testing.T) {
@@ -81,4 +84,58 @@ networks:
 			t.Error("File was modified during dry run")
 		}
 	})
+}
+
+func TestProcessComposeContent_RewritesImagesAndPreservesSuffix(t *testing.T) {
+	config := ProcessorConfig{
+		Algorithm: "sha256",
+		ImagePinner: func(_ *regclient.RegClient, image string, _ ProcessorConfig) (string, error) {
+			return image + "@sha256:abc123", nil
+		},
+	}
+
+	input := []byte(`services:
+  web:
+    image: nginx:alpine # keep this comment
+  worker:
+    image: busybox:latest
+`)
+	output, changed, err := processComposeContent(nil, input, config)
+	if err != nil {
+		t.Fatalf("processComposeContent() error: %v", err)
+	}
+	if !changed {
+		t.Fatal("processComposeContent() changed = false, want true")
+	}
+
+	want := `services:
+  web:
+    image: nginx:alpine@sha256:abc123 # keep this comment
+  worker:
+    image: busybox:latest@sha256:abc123
+`
+	if string(output) != want {
+		t.Fatalf("output = %q, want %q", string(output), want)
+	}
+}
+
+func TestProcessComposeContent_PinErrorLeavesImageUnchanged(t *testing.T) {
+	config := ProcessorConfig{
+		Algorithm: "sha256",
+		ImagePinner: func(_ *regclient.RegClient, _ string, _ ProcessorConfig) (string, error) {
+			return "", errors.New("registry unavailable")
+		},
+	}
+
+	input := []byte("services:\n  web:\n    image: nginx:alpine\n")
+	output, changed, err := processComposeContent(nil, input, config)
+	if err != nil {
+		t.Fatalf("processComposeContent() error: %v", err)
+	}
+	if changed {
+		t.Fatal("processComposeContent() changed = true, want false")
+	}
+	if string(output) != string(input) {
+		t.Fatalf("output = %q, want original %q", string(output), string(input))
+	}
 }

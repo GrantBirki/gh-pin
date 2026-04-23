@@ -12,7 +12,8 @@ This repository is `gh-pin`, a Go-based GitHub CLI extension for pinning mutable
 - `.github/workflows`: CI, acceptance, release, and provenance workflows.
 - `vendor/`: committed Go module dependencies. The normal development/test/build flow must work from vendored code.
 - `vendor_bin/`: attested vendored tool packages. Currently this is for GoReleaser only.
-- `test/fixtures`: sample Dockerfile, Compose, and workflow inputs for acceptance-style testing.
+- `test/fixtures`: sample Dockerfile, Compose, and workflow inputs for unit or exploratory testing.
+- `test/fakes/registry`: local OCI registry fake used by `script/acceptance` so acceptance coverage stays offline and deterministic.
 
 ## CLI Behavior
 
@@ -39,6 +40,7 @@ Important flags:
 
 - Docker image resolution uses `github.com/regclient/regclient`. Default behavior pins to the image/index digest. When `--platform` is set, the processor tries to select that platform's manifest digest and falls back to the index digest with a warning if it cannot.
 - GitHub Action resolution uses `github.com/cli/go-gh/v2/pkg/api` through `DefaultGitHubResolver`. Keep the `GitHubResolver` interface: tests depend on dependency injection instead of network calls.
+- Offline/acceptance hooks are explicit environment variables: `GH_PIN_INSECURE_REGISTRIES` is a comma-separated list of local HTTP registries, and `GH_PIN_GITHUB_RESOLVER_MAP` points to a JSON map of `owner/repo@ref` to commit SHA. These are for hermetic tests and should not change normal CLI defaults.
 - File rewrites are intentionally line-oriented. Preserve indentation, comments, ordering, and file mode; do not reserialize whole Docker/YAML files unless there is a strong reason.
 - Compose processing validates YAML with `goccy/go-yaml` but rewrites `image:` lines directly to avoid formatting churn.
 - GitHub Actions pin comments use `# pin@<ref>`. If an action is rewritten from a tag to a SHA, preserve or add the original tag as a pin comment so Dependabot can keep updates understandable.
@@ -85,11 +87,12 @@ Do not add a separate Go lint toolchain back to this repository.
 ## Testing Expectations
 
 - Add or update unit tests for behavior changes. Prefer table-driven tests using the standard `testing` package.
-- Avoid networked unit tests. Mock GitHub resolution through `GitHubResolver`; keep real registry/API behavior in acceptance tests or carefully isolated integration checks.
+- Avoid networked unit tests. Mock GitHub resolution through `GitHubResolver`; inject Docker pinning through `ImagePinner` when unit tests do not need registry behavior.
+- `script/acceptance` must stay fully offline. It starts the local fake OCI registry and uses the static GitHub resolver map to exercise Dockerfile, Compose, GitHub Actions, dry-run, force-mode, and platform-specific behavior without live Docker Hub/GitHub calls.
 - Cover edge cases around comments, indentation, malformed input, already-pinned refs, dry-run behavior, quiet mode, forced mode, platform fallback, and non-standard file names.
 - For scanner changes, test both directory scanning and explicit single-file processing; their filename rules intentionally differ.
 - For rewrite changes, assert that dry-run leaves files unchanged and non-dry-run preserves file permissions.
-- For behavior that touches Docker registry resolution, run `script/acceptance` when feasible because unit coverage intentionally avoids most network calls.
+- For behavior that touches Docker registry resolution, run `script/acceptance` when feasible because it provides registry-flavored coverage without external network dependency.
 
 ## CI and Release
 

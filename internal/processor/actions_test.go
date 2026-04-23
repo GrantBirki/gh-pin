@@ -1,8 +1,10 @@
 package processor
 
 import (
+	"errors"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/regclient/regclient"
@@ -221,6 +223,12 @@ func TestUpdateActionRefWithPinComment(t *testing.T) {
 			pinRef:    "v5",
 			want:      "actions/setup-go@v5",
 		},
+		{
+			name:      "invalid action ref is unchanged",
+			actionRef: "docker://alpine:3.18",
+			pinRef:    "v5",
+			want:      "docker://alpine:3.18",
+		},
 	}
 
 	for _, tt := range tests {
@@ -374,6 +382,95 @@ yaml: content`,
 	}
 }
 
+func TestProcessActionsContent_RewritesAndPreservesComments(t *testing.T) {
+	data := []byte(`name: test
+jobs:
+  test:
+    steps:
+      - uses: actions/checkout@v3 # existing comment
+      uses: actions/setup-go@v5
+`)
+	config := ProcessorConfig{DryRun: false, GitHubResolver: NewMockGitHubResolver()}
+
+	output, changed, err := processActionsContent(data, config)
+	if err != nil {
+		t.Fatalf("processActionsContent() error: %v", err)
+	}
+	if !changed {
+		t.Fatal("processActionsContent() changed = false, want true")
+	}
+
+	got := string(output)
+	for _, want := range []string{
+		"      - uses: actions/checkout@abcdef1234567890123456789012345678901234 # pin@v3 # existing comment",
+		"      uses: actions/setup-go@d35c59abb061a4a6fb18e82ac0862c26744d6ab5 # pin@v5",
+	} {
+		if !strings.Contains(got, want) {
+			t.Fatalf("output:\n%s\nmissing %q", got, want)
+		}
+	}
+}
+
+func TestProcessActionsContent_LeavesInvalidReferencesUnchanged(t *testing.T) {
+	data := []byte("steps:\n  - uses: docker://alpine:3.18\n")
+	output, changed, err := processActionsContent(data, ProcessorConfig{
+		DryRun:         false,
+		GitHubResolver: NewMockGitHubResolver(),
+	})
+	if err != nil {
+		t.Fatalf("processActionsContent() error: %v", err)
+	}
+	if changed {
+		t.Fatal("processActionsContent() changed = true, want false")
+	}
+	if string(output) != string(data) {
+		t.Fatalf("output = %q, want original %q", string(output), string(data))
+	}
+}
+
+func TestProcessActionsContent_ResolverErrorLeavesLineUnchanged(t *testing.T) {
+	data := []byte("steps:\n  - uses: actions/checkout@v4\n")
+	output, changed, err := processActionsContent(data, ProcessorConfig{
+		DryRun:         false,
+		GitHubResolver: errorResolver{},
+	})
+	if err != nil {
+		t.Fatalf("processActionsContent() error: %v", err)
+	}
+	if changed {
+		t.Fatal("processActionsContent() changed = true, want false")
+	}
+	if string(output) != string(data) {
+		t.Fatalf("output = %q, want original %q", string(output), string(data))
+	}
+}
+
+func TestProcessActions_WritesPinnedFile(t *testing.T) {
+	tempDir := t.TempDir()
+	testFile := filepath.Join(tempDir, "workflow.yml")
+	content := "steps:\n  - uses: actions/checkout@v4\n"
+	if err := os.WriteFile(testFile, []byte(content), 0644); err != nil {
+		t.Fatalf("os.WriteFile() error: %v", err)
+	}
+
+	err := ProcessActions(nil, testFile, ProcessorConfig{
+		DryRun:         false,
+		GitHubResolver: NewMockGitHubResolver(),
+	})
+	if err != nil {
+		t.Fatalf("ProcessActions() error: %v", err)
+	}
+
+	got, err := os.ReadFile(testFile)
+	if err != nil {
+		t.Fatalf("os.ReadFile() error: %v", err)
+	}
+	want := "steps:\n  - uses: actions/checkout@08eba0b27e820071cde6df949e0beb9ba4906955 # pin@v4\n"
+	if string(got) != want {
+		t.Fatalf("file content = %q, want %q", string(got), want)
+	}
+}
+
 func TestIsAlreadyPinnedToSHA(t *testing.T) {
 	tests := []struct {
 		name      string
@@ -405,4 +502,10 @@ func TestIsAlreadyPinnedToSHA(t *testing.T) {
 			}
 		})
 	}
+}
+
+type errorResolver struct{}
+
+func (errorResolver) ResolveActionToSHA(*GitHubRef) (string, error) {
+	return "", errors.New("resolver failed")
 }

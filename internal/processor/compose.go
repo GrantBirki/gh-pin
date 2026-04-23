@@ -45,7 +45,7 @@ func processComposeContent(rc *regclient.RegClient, data []byte, config Processo
 
 			if !hasDigest(imageRef, config.Algorithm) {
 				// Get pinned image using clean tag@digest format
-				pinned, err := PinImage(rc, imageRef, config)
+				pinned, err := config.pinImage(rc, imageRef)
 				if err != nil {
 					LogWarning("%v", err)
 					output.WriteString(line + "\n")

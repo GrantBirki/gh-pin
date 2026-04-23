@@ -1,7 +1,12 @@
 package processor
 
 import (
+	"context"
+	"strings"
 	"testing"
+
+	"github.com/regclient/regclient"
+	"github.com/regclient/regclient/types/ref"
 )
 
 func TestHasDigest(t *testing.T) {
@@ -72,6 +77,27 @@ func TestHasDigest(t *testing.T) {
 	}
 }
 
-// Note: PinImage() requires regclient and network access,
-// so we'll test it in integration tests or with mocking if needed.
-// For now, we focus on the testable logic without external dependencies.
+func TestPinImage_InvalidReference(t *testing.T) {
+	_, err := PinImage(regclient.New(), "not a valid image ref!", ProcessorConfig{Algorithm: "sha256"})
+	if err == nil {
+		t.Fatal("PinImage() error = nil, want parse error")
+	}
+	if !strings.Contains(err.Error(), "parse ref") {
+		t.Fatalf("PinImage() error = %q, want parse ref context", err.Error())
+	}
+}
+
+func TestGetPlatformSpecificDigest_InvalidPlatform(t *testing.T) {
+	imageRef, err := ref.New("nginx:latest")
+	if err != nil {
+		t.Fatalf("ref.New() error: %v", err)
+	}
+
+	_, err = getPlatformSpecificDigest(context.Background(), nil, imageRef, "linux/amd64!")
+	if err == nil {
+		t.Fatal("getPlatformSpecificDigest() error = nil, want invalid platform error")
+	}
+	if !strings.Contains(err.Error(), "invalid platform") {
+		t.Fatalf("getPlatformSpecificDigest() error = %q, want invalid platform context", err.Error())
+	}
+}
