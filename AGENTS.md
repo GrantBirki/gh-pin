@@ -1,4 +1,4 @@
-# GitHub Copilot Guidelines
+# Agents
 
 This is a Go based repository that is a CLI for pinning Docker images to a specific digest for better reproducibility and security. This CLI is an extension of the official GitHub CLI.
 

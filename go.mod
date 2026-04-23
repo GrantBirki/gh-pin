@@ -1,6 +1,6 @@
 module github.com/grantbirki/gh-pin
 
-go 1.24.6
+go 1.26.2
 
 require (
 	github.com/cli/go-gh/v2 v2.12.2
