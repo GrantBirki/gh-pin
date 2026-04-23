@@ -17,6 +17,7 @@ import (
 
 type commandRunner struct {
 	stat                  func(string) (os.FileInfo, error)
+	readDir               func(string) ([]os.DirEntry, error)
 	newRegClient          func() *regclient.RegClient
 	scanPath              func(*regclient.RegClient, string, processor.ProcessorConfig, bool) error
 	processSingleFile     func(*regclient.RegClient, string, processor.ProcessorConfig) error
@@ -35,6 +36,7 @@ func run(args []string, stdout, stderr io.Writer) int {
 func defaultCommandRunner() commandRunner {
 	return commandRunner{
 		stat:                  os.Stat,
+		readDir:               os.ReadDir,
 		newRegClient:          newRegClientFromEnv,
 		scanPath:              scanner.ScanPath,
 		processSingleFile:     scanner.ProcessSingleFile,
@@ -44,6 +46,10 @@ func defaultCommandRunner() commandRunner {
 }
 
 func (r commandRunner) run(programName string, args []string, stdout, stderr io.Writer) int {
+	if isCompletionRequest(args) {
+		return r.complete(args[0] == "__completeNoDesc", args[1:], stdout)
+	}
+
 	flags := flag.NewFlagSet(programName, flag.ContinueOnError)
 	flags.SetOutput(stderr)
 
