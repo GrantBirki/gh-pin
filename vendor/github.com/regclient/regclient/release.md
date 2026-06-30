@@ -1,22 +1,19 @@
-# Release v0.11.3
+# Release v0.11.5
 
 Security:
 
-- Go 1.26.2 release fixes CVE-2026-32280 ([PR 1072][pr-1072])
-- Go 1.26.2 release fixes CVE-2026-32281 ([PR 1072][pr-1072])
-- Go 1.26.2 release fixes CVE-2026-32283 ([PR 1072][pr-1072])
-- Go 1.26.2 release fixes CVE-2026-32288 ([PR 1072][pr-1072])
-- Go 1.26.2 release fixes CVE-2026-33810 ([PR 1072][pr-1072])
+- Prevent https to non-https downgrades and localhost redirects. ([PR 1093][pr-1093])
+- Forbid sending auth on redirects. ([PR 1095][pr-1095])
 
 Features:
 
-- Add support for pushing digest with tags. ([PR 1062][pr-1062])
-- Handle OCI-Tag headers with comma separators. ([PR 1070][pr-1070])
+- Add regbot `manifest.descriptor` to the sandbox. ([PR 1091][pr-1091])
 
 Contributors:
 
+- @GimmyDatBeeR
 - @sudo-bmitch
 
-[pr-1062]: https://github.com/regclient/regclient/pull/1062
-[pr-1070]: https://github.com/regclient/regclient/pull/1070
-[pr-1072]: https://github.com/regclient/regclient/pull/1072
+[pr-1091]: https://github.com/regclient/regclient/pull/1091
+[pr-1093]: https://github.com/regclient/regclient/pull/1093
+[pr-1095]: https://github.com/regclient/regclient/pull/1095
