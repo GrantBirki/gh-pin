@@ -41,7 +41,7 @@ github.com/goccy/go-yaml/token
 github.com/henvic/httpretty
 github.com/henvic/httpretty/internal/color
 github.com/henvic/httpretty/internal/header
-# github.com/klauspost/compress v1.18.5
+# github.com/klauspost/compress v1.18.6
 ## explicit; go 1.24
 github.com/klauspost/compress
 github.com/klauspost/compress/fse
@@ -68,7 +68,7 @@ github.com/muesli/termenv
 # github.com/opencontainers/go-digest v1.0.0
 ## explicit; go 1.13
 github.com/opencontainers/go-digest
-# github.com/regclient/regclient v0.11.3
+# github.com/regclient/regclient v0.11.4
 ## explicit; go 1.25.0
 github.com/regclient/regclient
 github.com/regclient/regclient/config
@@ -79,6 +79,7 @@ github.com/regclient/regclient/internal/httplink
 github.com/regclient/regclient/internal/limitread
 github.com/regclient/regclient/internal/pqueue
 github.com/regclient/regclient/internal/reghttp
+github.com/regclient/regclient/internal/reproducible
 github.com/regclient/regclient/internal/reqmeta
 github.com/regclient/regclient/internal/sloghandle
 github.com/regclient/regclient/internal/strparse
@@ -122,13 +123,13 @@ github.com/ulikunitz/xz
 github.com/ulikunitz/xz/internal/hash
 github.com/ulikunitz/xz/internal/xlog
 github.com/ulikunitz/xz/lzma
-# golang.org/x/sys v0.43.0
+# golang.org/x/sys v0.44.0
 ## explicit; go 1.25.0
 golang.org/x/sys/plan9
 golang.org/x/sys/unix
 golang.org/x/sys/windows
 golang.org/x/sys/windows/registry
-# golang.org/x/term v0.42.0
+# golang.org/x/term v0.43.0
 ## explicit; go 1.25.0
 golang.org/x/term
 # golang.org/x/text v0.23.0
