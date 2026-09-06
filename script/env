@@ -47,6 +47,9 @@ mkdir -p "$DIR/vendor/"
 # Set up Go environment variables
 export GOPROXY="off"
 export GOSUMDB="off"
+export GOTMPDIR="${DIR}/tmp/go"
+
+mkdir -p "$GOTMPDIR"
 
 # Get the module path from go.mod
 export PROJECT_MODULE_PATH=$(go list -m)
