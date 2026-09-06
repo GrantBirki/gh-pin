@@ -392,3 +392,7 @@ You can verify the release binaries by following these steps:
 ---
 
 Run `gh pin --help` for more information and full command/options usage.
+
+## Local Go Development
+
+`script/env` sets `GOTMPDIR` to the ignored `tmp/go` directory under the repository root and creates it before builds and tests. Use the repository scripts to inherit this setting; direct Go commands and editor test runners need the same environment. This keeps temporary Go build binaries with the checkout without changing the process-wide `TMPDIR`.
