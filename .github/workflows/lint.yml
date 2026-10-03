@@ -8,6 +8,8 @@ on:
 permissions:
   contents: read
 
+cache-mode: none
+
 jobs:
   lint:
     runs-on: ubuntu-latest
@@ -21,7 +23,7 @@ jobs:
         uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # pin@v6
         with:
           go-version-file: 'go.mod'
-          cache: true
+          cache: false
 
       - name: bootstrap
         run: script/bootstrap
