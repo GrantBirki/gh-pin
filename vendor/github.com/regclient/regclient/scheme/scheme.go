@@ -1,3 +1,17 @@
+// Copyright the regclient contributors.
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+
 // Package scheme defines the interface for various reference schemes.
 package scheme
 
@@ -106,9 +120,10 @@ func WithManifest(m manifest.Manifest) ManifestOpts {
 
 // ReferrerConfig is used by schemes to import [ReferrerOpts].
 type ReferrerConfig struct {
-	MatchOpt descriptor.MatchOpt // filter/sort results
-	Platform string              // get referrers for a specific platform
-	SrcRepo  ref.Ref             // repo used to query referrers
+	MatchOpt   descriptor.MatchOpt // filter/sort results
+	Platform   string              // get referrers for a specific platform
+	SlowSearch bool                // search every manifest in an OCI Layout index.json file
+	SrcRepo    ref.Ref             // repo used to query referrers
 }
 
 // ReferrerOpts is used to set options on referrer APIs.
@@ -126,6 +141,14 @@ func WithReferrerMatchOpt(mo descriptor.MatchOpt) ReferrerOpts {
 func WithReferrerPlatform(p string) ReferrerOpts {
 	return func(config *ReferrerConfig) {
 		config.Platform = p
+	}
+}
+
+// WithReferrerSlowSearch looks for referrers in ways that increases compatibility but takes longer.
+// When used with an OCI Layout, this searches every manifest for a subject for ORAS compatibility.
+func WithReferrerSlowSearch() ReferrerOpts {
+	return func(config *ReferrerConfig) {
+		config.SlowSearch = true
 	}
 }
 

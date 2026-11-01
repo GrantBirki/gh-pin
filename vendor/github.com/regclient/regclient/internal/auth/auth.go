@@ -1,3 +1,17 @@
+// Copyright the regclient contributors.
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+
 // Package auth is used for HTTP authentication
 package auth
 
@@ -15,6 +29,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/regclient/regclient/internal/regnet"
 	"github.com/regclient/regclient/types/errs"
 )
 
@@ -391,7 +406,7 @@ func parseAuthHeader(ah string) ([]challenge, error) {
 				cl = append(cl, *c)
 				stateSyntax = "end_auth_type"
 			} else if b == '=' && len(curElement) > 0 {
-				curKey = strings.ToLower((string(curElement)))
+				curKey = strings.ToLower(string(curElement))
 				stateSyntax = "param_value"
 			} else {
 				return nil, fmt.Errorf("expected auth type or param: %w", errs.ErrParsingFailed)
@@ -399,7 +414,7 @@ func parseAuthHeader(ah string) ([]challenge, error) {
 		case "end_auth_type":
 			// end_auth_type: (after reading auth_type) read param_key and equals (param_value) or just a comma (start)
 			if b == '=' && len(curElement) > 0 {
-				curKey = strings.ToLower((string(curElement)))
+				curKey = strings.ToLower(string(curElement))
 				stateSyntax = "param_value"
 			} else if b == ',' && len(curElement) == 0 {
 				// ignore white space between end of auth_type and comma
@@ -638,6 +653,10 @@ func (b *bearerHandler) UpdateRequest(req *http.Request) error {
 			return err
 		}
 		b.tokenURL = u
+	}
+	// verify tokenURL is allowed for request URL
+	if err := regnet.AllowRedirect(*req.URL, *b.tokenURL); err != nil {
+		return err
 	}
 	// if unexpired token already exists, return it
 	if b.token.Token != "" && !b.isExpired() {
@@ -892,14 +911,12 @@ func (j *jwtHubHandler) ProcessChallenge(c challenge) error {
 		return err
 	}
 	defer resp.Body.Close()
-	body, _ := io.ReadAll(resp.Body)
-
 	if resp.StatusCode != 200 || resp.StatusCode >= 300 {
 		return errs.ErrHTTPUnauthorized
 	}
 
 	var bodyParsed jwtHubResp
-	err = json.Unmarshal(body, &bodyParsed)
+	err = json.NewDecoder(resp.Body).Decode(&bodyParsed)
 	if err != nil {
 		return err
 	}
